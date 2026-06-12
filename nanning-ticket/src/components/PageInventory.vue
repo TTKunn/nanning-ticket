@@ -1,23 +1,20 @@
 <template>
   <div>
-    <!-- 库存汇总 -->
-    <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px;">
-      <div class="stat-card" v-for="s in summaryStats" :key="s.label">
+    <div class="alert alert-warning" style="margin-bottom:12px;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z"/></svg>
+      当前有 <strong>3</strong> 个票种今日库存低于预警线，请优先调整日历库存而不是仅补总库存。
+    </div>
+
+    <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px;">
+      <div class="stat-card" v-for="item in summaryStats" :key="item.label">
         <div class="stat-card-header">
-          <span class="stat-card-label">{{ s.label }}</span>
+          <span class="stat-card-label">{{ item.label }}</span>
         </div>
-        <div class="stat-card-value" :style="{ color: s.color || 'var(--color-text-primary)' }">{{ s.value }}</div>
-        <div style="font-size:12px;color:var(--color-text-muted);margin-top:4px;">{{ s.sub }}</div>
+        <div class="stat-card-value">{{ item.value }}</div>
+        <div style="font-size:12px;color:var(--color-text-muted);margin-top:4px;">{{ item.sub }}</div>
       </div>
     </div>
 
-    <!-- 预警提示 -->
-    <div class="alert alert-warning" style="margin-bottom:12px;">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8.982 1.566a1.13 1.13 0 00-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 01-1.1 0L7.1 5.995A.905.905 0 018 5zm.002 6a1 1 0 110 2 1 1 0 010-2z"/></svg>
-      当前有 <strong>3</strong> 个票种库存低于预警线（50张），请及时补充库存
-    </div>
-
-    <!-- 工具栏 -->
     <div class="card" style="margin-bottom:12px;">
       <div class="toolbar">
         <div class="form-item">
@@ -25,42 +22,41 @@
         </div>
         <div class="form-item">
           <select class="form-select">
-            <option>全部景区</option>
+            <option>全部园区</option>
             <option v-for="s in scenics" :key="s">{{ s }}</option>
           </select>
+        </div>
+        <div class="form-item">
+          <input class="form-input" type="date" value="2026-06-07" style="width:150px;" />
         </div>
         <div class="form-item">
           <select class="form-select">
             <option>全部状态</option>
             <option>库存充足</option>
-            <option>库存偏低</option>
-            <option>紧急补货</option>
+            <option>日库存偏低</option>
+            <option>总库存偏低</option>
             <option>已售罄</option>
           </select>
         </div>
         <button class="btn btn-default">查询</button>
         <div style="flex:1;"></div>
-        <button class="btn btn-primary" @click="showAddModal = true">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 01.5.5v3h3a.5.5 0 010 1h-3v3a.5.5 0 01-1 0v-3h-3a.5.5 0 010-1h3v-3A.5.5 0 018 4z"/></svg>
-          补充库存
-        </button>
-        <button class="btn btn-default">批量调整</button>
+        <button class="btn btn-primary" @click="showAdjustModal = true">调整日库存</button>
+        <button class="btn btn-default">调整总库存</button>
       </div>
     </div>
 
-    <!-- 库存表格 -->
     <div class="card">
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>票种名称</th>
-              <th>所属景区</th>
+              <th>所属园区</th>
+              <th>票种分组</th>
               <th>总库存</th>
-              <th>已售出</th>
-              <th>已核销</th>
-              <th>剩余可售</th>
-              <th>库存占用率</th>
+              <th>今日库存</th>
+              <th>今日已售</th>
+              <th>今日剩余</th>
               <th>预警线</th>
               <th>状态</th>
               <th>操作</th>
@@ -69,39 +65,23 @@
           <tbody>
             <tr v-for="item in inventoryList" :key="item.id">
               <td>
-                <div style="font-weight:500;">{{ item.name }}</div>
+                <div style="font-weight:600;">{{ item.name }}</div>
+                <div style="font-size:11px;color:var(--color-text-muted);">{{ item.stockMode }}</div>
               </td>
-              <td style="color:var(--color-text-secondary);">{{ item.scenic }}</td>
-              <td>{{ item.total }}</td>
-              <td>{{ item.sold }}</td>
-              <td>{{ item.verified }}</td>
+              <td>{{ item.scenic }}</td>
+              <td><span class="tag" :class="groupClass(item.group)">{{ item.group }}</span></td>
+              <td>{{ item.totalStock }}</td>
+              <td>{{ item.dailyStock }}</td>
+              <td>{{ item.dailySold }}</td>
               <td>
-                <span :style="{ fontWeight: 600, color: getStockColor(item.remaining, item.warning) }">
-                  {{ item.remaining }}
-                </span>
+                <span :style="{ fontWeight:600, color:getStockColor(item.dailyRemaining, item.warning) }">{{ item.dailyRemaining }}</span>
               </td>
-              <td style="min-width:120px;">
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <div class="progress-bar" style="flex:1;">
-                    <div class="progress-fill"
-                      :style="{ width: (item.sold/item.total*100) + '%', background: getProgressColor(item.sold/item.total) }">
-                    </div>
-                  </div>
-                  <span style="font-size:12px;color:var(--color-text-muted);width:36px;text-align:right;">
-                    {{ Math.round(item.sold/item.total*100) }}%
-                  </span>
-                </div>
-              </td>
-              <td style="color:var(--color-text-muted);">{{ item.warning }}</td>
-              <td>
-                <span class="tag" :class="getStatusClass(item.remaining, item.warning)">
-                  {{ getStatusText(item.remaining, item.warning) }}
-                </span>
-              </td>
+              <td>{{ item.warning }}</td>
+              <td><span class="tag" :class="statusClass(item)">{{ statusText(item) }}</span></td>
               <td>
                 <div style="display:flex;gap:8px;">
-                  <span class="action-link" @click="openAddStock(item)">补货</span>
-                  <span class="action-link">调整预警</span>
+                  <span class="action-link" @click="openAdjust(item)">调日库存</span>
+                  <span class="action-link">库存日历</span>
                   <span class="action-link">明细</span>
                 </div>
               </td>
@@ -109,51 +89,42 @@
           </tbody>
         </table>
       </div>
-      <div class="pagination">
-        <span class="pagination-info">共 {{ inventoryList.length }} 条</span>
-        <button class="page-btn" disabled>«</button>
-        <button class="page-btn active">1</button>
-        <button class="page-btn">»</button>
-      </div>
     </div>
 
-    <!-- 补货弹窗 -->
-    <div class="modal-mask" v-if="showAddModal" @click.self="showAddModal = false">
-      <div class="modal-box" style="width:420px;">
+    <div class="modal-mask" v-if="showAdjustModal" @click.self="showAdjustModal = false">
+      <div class="modal-box" style="width:460px;">
         <div class="modal-header">
-          <span class="modal-title">补充库存{{ selectedItem ? ' — ' + selectedItem.name : '' }}</span>
-          <button class="modal-close" @click="showAddModal = false">×</button>
+          <span class="modal-title">调整日库存{{ selectedItem ? ' - ' + selectedItem.name : '' }}</span>
+          <button class="modal-close" @click="showAdjustModal = false">×</button>
         </div>
         <div class="modal-body">
           <div class="form-vertical">
-            <div class="form-item" v-if="!selectedItem">
-              <label class="form-label">选择票种</label>
-              <select class="form-select">
-                <option v-for="item in inventoryList" :key="item.id">{{ item.name }}</option>
-              </select>
+            <div class="form-item">
+              <label class="form-label">适用日期</label>
+              <input class="form-input" type="date" value="2026-06-07" />
             </div>
             <div class="form-item">
-              <label class="form-label">补充数量</label>
-              <input class="form-input" type="number" placeholder="请输入补充数量" />
+              <label class="form-label">当前日库存</label>
+              <input class="form-input" :value="selectedItem?.dailyStock || 0" disabled />
             </div>
             <div class="form-item">
-              <label class="form-label">补货原因</label>
+              <label class="form-label">调整后日库存</label>
+              <input class="form-input" type="number" placeholder="请输入调整数量" />
+            </div>
+            <div class="form-item">
+              <label class="form-label">调整原因</label>
               <select class="form-select">
-                <option>常规补货</option>
                 <option>节假日备货</option>
                 <option>活动备货</option>
-                <option>其他</option>
+                <option>项目临时限流</option>
+                <option>人工修正</option>
               </select>
-            </div>
-            <div class="form-item">
-              <label class="form-label">备注</label>
-              <textarea class="form-textarea" placeholder="可选填备注信息..."></textarea>
             </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-default" @click="showAddModal = false">取消</button>
-          <button class="btn btn-primary" @click="showAddModal = false">确认补货</button>
+          <button class="btn btn-default" @click="showAdjustModal = false">取消</button>
+          <button class="btn btn-primary" @click="showAdjustModal = false">保存调整</button>
         </div>
       </div>
     </div>
@@ -163,25 +134,33 @@
 <script setup>
 import { ref } from 'vue'
 
-const showAddModal = ref(false)
+const showAdjustModal = ref(false)
 const selectedItem = ref(null)
 
-const scenics = ['青秀山风景区', '南湖公园', '广西民族博物馆', '邕江景区', '良凤江国家森林公园']
+const scenics = ['青秀山风景区', '南湖公园', '广西民族博物馆', '邕江景区']
 
 const summaryStats = [
-  { label: '总票种数', value: '6', sub: '上架中 5 个，已下架 1 个' },
-  { label: '总剩余库存', value: '1,248', sub: '较昨日减少 284 张', color: 'var(--color-text-primary)' },
-  { label: '库存预警票种', value: '3', sub: '需及时补充库存', color: 'var(--color-red)' },
+  { label: '启用票种', value: '8', sub: '含门票、游玩票、全包票' },
+  { label: '总库存余额', value: '6,920', sub: '跨票种汇总剩余总量' },
+  { label: '今日库存余额', value: '1,142', sub: '按 2026-06-07 统计' },
+  { label: '预警票种', value: '3', sub: '需补充日历库存' },
 ]
 
 const inventoryList = [
-  { id: 1, name: '青秀山成人票', scenic: '青秀山风景区', total: 500, sold: 412, verified: 380, remaining: 88, warning: 50 },
-  { id: 2, name: '青秀山儿童票', scenic: '青秀山风景区', total: 200, sold: 98, verified: 90, remaining: 102, warning: 30 },
-  { id: 3, name: '南湖公园联票', scenic: '南湖公园', total: 300, sold: 285, verified: 260, remaining: 15, warning: 50 },
-  { id: 4, name: '广西民族博物馆票', scenic: '广西民族博物馆', total: 1000, sold: 968, verified: 900, remaining: 32, warning: 50 },
-  { id: 5, name: '邕江游船夜游', scenic: '邕江景区', total: 200, sold: 155, verified: 140, remaining: 45, warning: 50 },
-  { id: 6, name: '良凤江森林公园票', scenic: '良凤江国家森林公园', total: 400, sold: 120, verified: 100, remaining: 280, warning: 50 },
+  { id: 1, name: '青秀山成人门票', scenic: '青秀山风景区', group: '门票', stockMode: '总库存 + 日库存', totalStock: 5000, dailyStock: 500, dailySold: 412, dailyRemaining: 88, warning: 80 },
+  { id: 2, name: '青秀山观光车票', scenic: '青秀山风景区', group: '游玩票', stockMode: '仅日库存', totalStock: '—', dailyStock: 180, dailySold: 150, dailyRemaining: 30, warning: 40 },
+  { id: 3, name: '邕江夜游全包票', scenic: '邕江景区', group: '全包票', stockMode: '总库存 + 日库存', totalStock: 800, dailyStock: 80, dailySold: 68, dailyRemaining: 12, warning: 20 },
+  { id: 4, name: '南湖节庆套票', scenic: '南湖公园', group: '套票', stockMode: '仅日库存', totalStock: '—', dailyStock: 120, dailySold: 40, dailyRemaining: 80, warning: 30 },
 ]
+
+function groupClass(group) {
+  return {
+    门票: 'tag-blue',
+    游玩票: 'tag-orange',
+    全包票: 'tag-green',
+    套票: 'tag-gray',
+  }[group] || 'tag-gray'
+}
 
 function getStockColor(remaining, warning) {
   if (remaining === 0) return 'var(--color-gray-400)'
@@ -190,28 +169,22 @@ function getStockColor(remaining, warning) {
   return 'var(--color-text-primary)'
 }
 
-function getProgressColor(ratio) {
-  if (ratio > 0.95) return 'var(--color-red)'
-  if (ratio > 0.8) return 'var(--color-orange)'
-  return 'var(--color-blue)'
-}
-
-function getStatusClass(remaining, warning) {
-  if (remaining === 0) return 'tag-gray'
-  if (remaining < warning * 0.5) return 'tag-red'
-  if (remaining < warning) return 'tag-orange'
+function statusClass(item) {
+  if (item.dailyRemaining === 0) return 'tag-gray'
+  if (item.dailyRemaining < item.warning * 0.5) return 'tag-red'
+  if (item.dailyRemaining < item.warning) return 'tag-orange'
   return 'tag-green'
 }
 
-function getStatusText(remaining, warning) {
-  if (remaining === 0) return '已售罄'
-  if (remaining < warning * 0.5) return '紧急补货'
-  if (remaining < warning) return '库存偏低'
+function statusText(item) {
+  if (item.dailyRemaining === 0) return '已售罄'
+  if (item.dailyRemaining < item.warning * 0.5) return '日库存告急'
+  if (item.dailyRemaining < item.warning) return '日库存偏低'
   return '库存充足'
 }
 
-function openAddStock(item) {
+function openAdjust(item) {
   selectedItem.value = item
-  showAddModal.value = true
+  showAdjustModal.value = true
 }
 </script>
