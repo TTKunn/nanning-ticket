@@ -1,0 +1,66 @@
+server:
+  port: 8090
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: nanning-ticket-back
+
+  datasource:
+    url: jdbc:mysql://47.109.151.103:3306/nanning_ticket?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: nanning_ticket
+    password: 1025
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: nanning-ticket-pool
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 30000
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true       # 数据库下划线字段自动转驼峰
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl   # 打印 SQL（生产可改为 log4j2）
+    cache-enabled: false
+  global-config:
+    banner: false
+    db-config:
+      id-type: AUTO
+      # 注意：本项目使用 deleted_at DATETIME 做软删除，
+      # 不使用 @TableLogic 注解，而是在 wrapper 中通过 isNull(...) 手动过滤。
+
+# springdoc-openapi 配置
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
+  info:
+    title: AI 南宁票务管理系统 API
+    description: 园区、票种、订单、渠道等核心接口
+    version: 0.0.1-SNAPSHOT
+    contact:
+      name: nanning-ticket
+      email: dev@ainanning.com
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.ainanning.ticketing: DEBUG
+    com.ainanning.ticketing.mapper: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
