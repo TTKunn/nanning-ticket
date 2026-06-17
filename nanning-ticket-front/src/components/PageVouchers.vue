@@ -13,29 +13,26 @@
     <div class="card" style="margin-bottom:12px;">
       <div class="toolbar">
         <div class="form-item">
-          <input class="form-input" placeholder="票据号/订单号/核销码..." style="width:220px;" />
+          <input class="form-input" v-model="filterKeyword" placeholder="票据号/订单号..." style="width:220px;" />
         </div>
         <div class="form-item">
-          <select class="form-select">
-            <option>全部来源</option>
-            <option>本地系统</option>
-            <option>网售</option>
-            <option>分销平台</option>
+          <select class="form-select" v-model="filterScenicId">
+            <option value="">全部园区</option>
+            <option v-for="s in scenics" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
         <div class="form-item">
-          <select class="form-select">
-            <option>全部状态</option>
-            <option>已出票</option>
-            <option>待检票</option>
-            <option>已检票</option>
-            <option>已退款</option>
-            <option>已过期</option>
+          <select class="form-select" v-model="filterStatus">
+            <option value="">全部状态</option>
+            <option value="待使用">待使用</option>
+            <option value="已使用">已使用</option>
+            <option value="已退款">已退款</option>
+            <option value="已作废">已作废</option>
           </select>
         </div>
-        <button class="btn btn-default">查询</button>
+        <button class="btn btn-default" @click="loadVouchers">查询</button>
         <div style="flex:1;"></div>
-        <button class="btn btn-default">导出票据台账</button>
+        <button class="btn btn-default" @click="showRevokeModal = true">批量作废</button>
       </div>
     </div>
 
@@ -51,78 +48,105 @@
               <th>票据号</th>
               <th>订单号</th>
               <th>票种</th>
-              <th>票种分组</th>
-              <th>来源渠道</th>
-              <th>游客/手机号</th>
+              <th>园区</th>
+              <th>游客</th>
+              <th>有效期</th>
               <th>出票时间</th>
-              <th>检票状态</th>
-              <th>退款状态</th>
+              <th>状态</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="voucher in vouchers" :key="voucher.code">
-              <td style="font-family:monospace;font-size:12px;color:var(--color-blue);">{{ voucher.code }}</td>
-              <td style="font-family:monospace;font-size:12px;color:var(--color-text-secondary);">{{ voucher.orderId }}</td>
+            <tr v-if="loading">
+              <td colspan="9" class="empty-state">加载中...</td>
+            </tr>
+            <tr v-else-if="!vouchers.length">
+              <td colspan="9" class="empty-state">暂无票据数据</td>
+            </tr>
+            <tr v-for="voucher in vouchers" v-else :key="voucher.id">
+              <td style="font-family:monospace;font-size:12px;color:var(--color-blue);">{{ voucher.voucherCode }}</td>
+              <td style="font-family:monospace;font-size:12px;color:var(--color-text-secondary);">{{ voucher.saleNo }}</td>
               <td>
-                <div style="font-weight:600;">{{ voucher.ticket }}</div>
-                <div style="font-size:11px;color:var(--color-text-muted);">{{ voucher.scenic }}</div>
+                <div style="font-weight:600;">{{ voucher.ticketName }}</div>
+                <div style="font-size:11px;color:var(--color-text-muted);">¥{{ voucher.unitPrice }}</div>
               </td>
-              <td><span class="tag" :class="groupClass(voucher.group)">{{ voucher.group }}</span></td>
-              <td>{{ voucher.source }}</td>
-              <td style="font-size:12px;color:var(--color-text-secondary);">{{ voucher.visitor }}</td>
-              <td>{{ voucher.issuedAt }}</td>
-              <td><span class="tag" :class="voucher.verifyStatus === '已检票' ? 'tag-green' : voucher.verifyStatus === '待检票' ? 'tag-blue' : 'tag-gray'">{{ voucher.verifyStatus }}</span></td>
-              <td><span class="tag" :class="voucher.refundStatus === '已退款' ? 'tag-red' : voucher.refundStatus === '可退款' ? 'tag-orange' : 'tag-gray'">{{ voucher.refundStatus }}</span></td>
+              <td>{{ voucher.scenicName }}</td>
+              <td style="font-size:12px;">{{ voucher.visitorName || '—' }}</td>
+              <td style="font-size:12px;color:var(--color-text-secondary);">
+                {{ voucher.validFrom || '—' }} ~ {{ voucher.validTo || '—' }}
+              </td>
+              <td style="font-size:12px;">{{ voucher.createdAt }}</td>
+              <td>
+                <span class="tag" :class="statusClass(voucher.status)">{{ voucher.status }}</span>
+              </td>
               <td>
                 <div style="display:flex;gap:8px;">
                   <span class="action-link" @click="openDetail(voucher)">详情</span>
-                  <span class="action-link" v-if="voucher.verifyStatus === '待检票'">补打票据</span>
-                  <span class="action-link danger" v-if="voucher.refundStatus === '可退款'">退票</span>
+                  <span class="action-link danger" v-if="voucher.status === '待使用'" @click="revokeOne(voucher)">作废</span>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <div class="pagination">
+        <span class="pagination-info">共 {{ total }} 条</span>
+        <button class="page-btn" :disabled="pageNum <= 1" @click="pageNum--; loadVouchers()">«</button>
+        <button v-for="p in pages" :key="p" class="page-btn" :class="{ active: p === pageNum }" @click="pageNum = p; loadVouchers()">{{ p }}</button>
+        <button class="page-btn" :disabled="pageNum >= pages" @click="pageNum++; loadVouchers()">»</button>
+      </div>
     </div>
 
+    <!-- 详情弹窗 -->
     <div class="modal-mask" v-if="showDetail && currentVoucher" @click.self="showDetail = false">
-      <div class="modal-box" style="width:620px;">
+      <div class="modal-box" style="width:560px;">
         <div class="modal-header">
           <span class="modal-title">票据详情</span>
           <button class="modal-close" @click="showDetail = false">×</button>
         </div>
         <div class="modal-body">
-          <div class="info-row"><span class="info-label">票据号</span><span class="info-value">{{ currentVoucher.code }}</span></div>
-          <div class="info-row"><span class="info-label">订单号</span><span class="info-value">{{ currentVoucher.orderId }}</span></div>
-          <div class="info-row"><span class="info-label">票种</span><span class="info-value">{{ currentVoucher.ticket }}</span></div>
-          <div class="info-row"><span class="info-label">票种分组</span><span class="info-value">{{ currentVoucher.group }}</span></div>
-          <div class="info-row"><span class="info-label">来源渠道</span><span class="info-value">{{ currentVoucher.source }}</span></div>
-          <div class="info-row"><span class="info-label">检票状态</span><span class="info-value">{{ currentVoucher.verifyStatus }}</span></div>
-          <div class="info-row"><span class="info-label">退款状态</span><span class="info-value">{{ currentVoucher.refundStatus }}</span></div>
-          <div class="info-row"><span class="info-label">退票规则</span><span class="info-value">{{ currentVoucher.refundRule }}</span></div>
-          <div class="divider"></div>
-          <div style="font-size:13px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;">状态链路</div>
-          <table>
-            <thead>
-              <tr>
-                <th>节点</th>
-                <th>时间</th>
-                <th>说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="step in currentVoucher.steps" :key="step.name">
-                <td>{{ step.name }}</td>
-                <td style="font-size:12px;color:var(--color-text-secondary);">{{ step.time }}</td>
-                <td>{{ step.desc }}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="info-row"><span class="info-label">票据号</span><span class="info-value" style="font-family:monospace;">{{ currentVoucher.voucherCode }}</span></div>
+          <div class="info-row"><span class="info-label">关联订单</span><span class="info-value">{{ currentVoucher.saleNo }}</span></div>
+          <div class="info-row"><span class="info-label">票种</span><span class="info-value">{{ currentVoucher.ticketName }}</span></div>
+          <div class="info-row"><span class="info-label">园区</span><span class="info-value">{{ currentVoucher.scenicName }}</span></div>
+          <div class="info-row"><span class="info-label">单价</span><span class="info-value">¥{{ currentVoucher.unitPrice }}</span></div>
+          <div class="info-row"><span class="info-label">有效期</span><span class="info-value">{{ currentVoucher.validFrom }} ~ {{ currentVoucher.validTo }}</span></div>
+          <div class="info-row"><span class="info-label">状态</span><span class="info-value">{{ currentVoucher.status }}</span></div>
+          <div class="info-row"><span class="info-label">出票时间</span><span class="info-value">{{ currentVoucher.createdAt }}</span></div>
+          <div class="info-row"><span class="info-label">备注</span><span class="info-value">{{ currentVoucher.remark || '—' }}</span></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-default" @click="showDetail = false">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 批量作废弹窗 -->
+    <div class="modal-mask" v-if="showRevokeModal" @click.self="showRevokeModal = false">
+      <div class="modal-box" style="width:480px;">
+        <div class="modal-header">
+          <span class="modal-title">批量作废票据</span>
+          <button class="modal-close" @click="showRevokeModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-vertical">
+            <div class="form-item">
+              <label class="form-label">票据号（多行 / 逗号分隔）</label>
+              <textarea class="form-textarea" v-model="revokeForm.codes" placeholder="V202606140001, V202606140002" />
+            </div>
+            <div class="form-item">
+              <label class="form-label">作废原因</label>
+              <input class="form-input" v-model="revokeForm.reason" placeholder="如：二维码污损" />
+            </div>
+            <div class="form-item">
+              <label class="form-label">操作员</label>
+              <input class="form-input" v-model="revokeForm.staffName" placeholder="姓名" />
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-default" @click="showRevokeModal = false">取消</button>
+          <button class="btn btn-primary" :disabled="saving" @click="submitRevoke">{{ saving ? '提交中...' : '确认作废' }}</button>
         </div>
       </div>
     </div>
@@ -130,83 +154,118 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage } from './ui/Message'
+import { listVouchers, getVoucherStats, revokeVouchers, getVoucherByCode } from '../api/voucher'
+import { listScenicOptions } from '../api/scenic'
+
+const loading = ref(false)
+const saving = ref(false)
+const vouchers = ref([])
+const total = ref(0)
+const pageNum = ref(1)
+const pageSize = ref(15)
+const pages = ref(1)
+const scenics = ref([])
+
+const filterKeyword = ref('')
+const filterScenicId = ref('')
+const filterStatus = ref('')
+
+const summaryStats = ref([
+  { label: '已出票票据', value: '0', sub: '含系统直销与分销渠道' },
+  { label: '待使用', value: '0', sub: '尚未入园或体验' },
+  { label: '已使用', value: '0', sub: '已核销' },
+  { label: '已退款/作废', value: '0', sub: '无效票据' },
+])
 
 const showDetail = ref(false)
 const currentVoucher = ref(null)
 
-const summaryStats = [
-  { label: '已出票票据', value: '2,184', sub: '含系统直销与分销渠道' },
-  { label: '待检票票据', value: '624', sub: '尚未入园或体验' },
-  { label: '可退款票据', value: '38', sub: '满足未使用可退规则' },
-  { label: '异常票据', value: '4', sub: '渠道回传或核销状态不一致' },
-]
+const showRevokeModal = ref(false)
+const revokeForm = reactive({ codes: '', reason: '', staffName: '' })
 
-const vouchers = [
-  {
-    code: 'VC202606070001',
-    orderId: 'NN2026060700891',
-    ticket: '青秀山成人门票',
-    scenic: '青秀山风景区',
-    group: '门票',
-    source: '本地系统',
-    visitor: '张** / 138****8888',
-    issuedAt: '2026-06-07 09:12',
-    verifyStatus: '待检票',
-    refundStatus: '可退款',
-    refundRule: '未使用可退',
-    steps: [
-      { name: '下单', time: '2026-06-07 09:10', desc: '窗口售票创建订单' },
-      { name: '出票', time: '2026-06-07 09:12', desc: '本地系统出票成功' },
-    ],
-  },
-  {
-    code: 'VC202606070002',
-    orderId: 'NN2026060700888',
-    ticket: '邕江夜游全包票',
-    scenic: '邕江景区',
-    group: '全包票',
-    source: '携程旅行',
-    visitor: '李** / 139****6666',
-    issuedAt: '2026-06-07 08:55',
-    verifyStatus: '已检票',
-    refundStatus: '不可退',
-    refundRule: '未使用可退 + 过期自动退',
-    steps: [
-      { name: '渠道下单', time: '2026-06-07 08:48', desc: '携程下发订单' },
-      { name: '出票', time: '2026-06-07 08:55', desc: '系统自动回传票据' },
-      { name: '检票', time: '2026-06-07 09:30', desc: '入园核销成功' },
-    ],
-  },
-  {
-    code: 'VC202606070003',
-    orderId: 'NN2026060700882',
-    ticket: '青秀山观光车票',
-    scenic: '青秀山风景区',
-    group: '游玩票',
-    source: '网售',
-    visitor: '王** / 136****5555',
-    issuedAt: '2026-06-07 08:20',
-    verifyStatus: '待检票',
-    refundStatus: '可退款',
-    refundRule: '未使用可退',
-    steps: [
-      { name: '下单', time: '2026-06-07 08:18', desc: '网售渠道下单成功' },
-      { name: '出票', time: '2026-06-07 08:20', desc: '电子票已发送' },
-    ],
-  },
-]
-
-function groupClass(group) {
+function statusClass(status) {
   return {
-    门票: 'tag-blue',
-    游玩票: 'tag-orange',
-    全包票: 'tag-green',
-  }[group] || 'tag-gray'
+    '待使用': 'tag-blue',
+    '已使用': 'tag-gray',
+    '已退款': 'tag-red',
+    '已作废': 'tag-red',
+  }[status] || 'tag-gray'
 }
 
-function openDetail(voucher) {
-  currentVoucher.value = voucher
+async function loadScenics() {
+  try { scenics.value = await listScenicOptions() } catch (e) { /* handled */ }
+}
+
+async function loadVouchers() {
+  loading.value = true
+  try {
+    const params = { pageNum: pageNum.value, pageSize: pageSize.value }
+    if (filterKeyword.value) params.keyword = filterKeyword.value
+    if (filterScenicId.value) params.scenicId = filterScenicId.value
+    if (filterStatus.value) params.status = filterStatus.value
+    const data = await listVouchers(params)
+    vouchers.value = data?.records || []
+    total.value = data?.total || 0
+    pages.value = data?.pages || 1
+  } catch (e) { /* handled */ }
+  finally { loading.value = false }
+}
+
+async function loadStats() {
+  try {
+    const data = await getVoucherStats(filterScenicId.value || undefined)
+    if (data) {
+      summaryStats.value[0].value = String(data.totalCount || 0)
+      summaryStats.value[1].value = String(data.unusedCount || 0)
+      summaryStats.value[2].value = String(data.usedCount || 0)
+      summaryStats.value[3].value = String((data.refundCount || 0) + (data.revokedCount || 0))
+      summaryStats.value[3].sub = `核销率 ${data.usageRate || 0}%`
+    }
+  } catch (e) { /* handled */ }
+}
+
+async function openDetail(voucher) {
+  // 优先拉详情接口；如未提供，回退到列表数据
+  try {
+    const detail = await getVoucherByCode(voucher.voucherCode)
+    currentVoucher.value = detail || voucher
+  } catch (e) {
+    currentVoucher.value = voucher
+  }
   showDetail.value = true
 }
+
+async function revokeOne(voucher) {
+  if (!confirm(`确定作废票据 ${voucher.voucherCode} ?`)) return
+  try {
+    await revokeVouchers({ ids: [voucher.id], reason: '管理端手动作废', staffName: '管理员' })
+    ElMessage({ type: 'success', message: '已作废' })
+    loadVouchers()
+    loadStats()
+  } catch (e) { /* handled */ }
+}
+
+async function submitRevoke() {
+  if (!revokeForm.codes) { ElMessage({ type: 'warning', message: '请填写票据号' }); return }
+  const ids = revokeForm.codes.split(/[,\n\s]+/).filter(Boolean).map(Number).filter(Boolean)
+  if (!ids.length) { ElMessage({ type: 'warning', message: '票据号格式不正确（应为 ID 数字）' }); return }
+  saving.value = true
+  try {
+    await revokeVouchers({ ids, reason: revokeForm.reason, staffName: revokeForm.staffName || '管理员' })
+    ElMessage({ type: 'success', message: `已作废 ${ids.length} 张` })
+    showRevokeModal.value = false
+    revokeForm.codes = ''
+    loadVouchers()
+    loadStats()
+  } catch (e) { /* handled */ }
+  finally { saving.value = false }
+}
+
+onMounted(async () => {
+  await loadScenics()
+  await loadVouchers()
+  await loadStats()
+})
 </script>

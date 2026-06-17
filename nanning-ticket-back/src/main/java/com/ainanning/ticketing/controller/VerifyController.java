@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -70,13 +71,15 @@ public class VerifyController {
         return Result.success(verifyService.listByVoucherCode(voucherCode));
     }
 
-    @Operation(summary = "园区当日检票成功统计")
+    @Operation(summary = "园区当日检票成功统计（不传 scenicId 则统计全部园区）")
     @GetMapping("/today-stats")
     public Result<Map<String, Object>> todayStats(
-            @Parameter(description = "园区 ID", example = "1") @RequestParam Long scenicId) {
-        return Result.success(Map.of(
-                "scenicId", scenicId,
-                "date", java.time.LocalDate.now().toString(),
-                "successCount", verifyService.countTodaySuccess(scenicId)));
+            @Parameter(description = "园区 ID（不传则统计全部园区）", required = false, example = "1")
+            @RequestParam(required = false) Long scenicId) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("scenicId", scenicId);
+        body.put("date", java.time.LocalDate.now().toString());
+        body.put("successCount", verifyService.countTodaySuccess(scenicId));
+        return Result.success(body);
     }
 }

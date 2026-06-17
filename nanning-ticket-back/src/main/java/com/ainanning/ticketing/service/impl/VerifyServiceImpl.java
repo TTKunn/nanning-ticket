@@ -292,11 +292,15 @@ public class VerifyServiceImpl implements VerifyService {
 
     @Override
     public long countSuccessByDate(Long scenicId, LocalDate date) {
-        if (scenicId == null || date == null) {
+        if (date == null) {
             return 0L;
         }
-        return verifyRecordMapper.countSuccessByScenicAndTime(
-                scenicId, date.atStartOfDay(), date.atTime(LocalTime.MAX));
+        java.time.LocalDateTime from = date.atStartOfDay();
+        java.time.LocalDateTime to = date.atTime(LocalTime.MAX);
+        if (scenicId == null) {
+            return verifyRecordMapper.countSuccessByTime(from, to);
+        }
+        return verifyRecordMapper.countSuccessByScenicAndTime(scenicId, from, to);
     }
 
     /* ====================== 私有方法 ====================== */

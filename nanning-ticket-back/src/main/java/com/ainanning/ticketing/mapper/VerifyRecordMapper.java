@@ -22,7 +22,7 @@ public interface VerifyRecordMapper extends BaseMapper<VerifyRecord> {
     long countSuccessByVoucherCode(String voucherCode);
 
     /**
-     * 统计指定时间窗口内的检票成功次数
+     * 统计指定时间窗口内、某园区的检票成功次数
      */
     @Select("SELECT COUNT(*) FROM verify_record " +
             "WHERE scenic_id = #{scenicId} " +
@@ -30,4 +30,12 @@ public interface VerifyRecordMapper extends BaseMapper<VerifyRecord> {
             "AND verify_time BETWEEN #{from} AND #{to}")
     long countSuccessByScenicAndTime(Long scenicId, java.time.LocalDateTime from,
                                      java.time.LocalDateTime to);
+
+    /**
+     * 统计指定时间窗口内全部园区的检票成功次数（跨园区汇总）
+     */
+    @Select("SELECT COUNT(*) FROM verify_record " +
+            "WHERE result = '成功' AND deleted_at IS NULL " +
+            "AND verify_time BETWEEN #{from} AND #{to}")
+    long countSuccessByTime(java.time.LocalDateTime from, java.time.LocalDateTime to);
 }

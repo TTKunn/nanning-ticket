@@ -3,26 +3,17 @@
     <div class="card" style="margin-bottom:12px;">
       <div class="toolbar">
         <div class="form-item">
-          <input class="form-input" placeholder="核销码/票据号/订单号..." style="width:220px;" />
+          <input class="form-input" v-model="filterKeyword" placeholder="核销码/票据号/订单号..." style="width:220px;" />
         </div>
         <div class="form-item">
-          <select class="form-select">
-            <option>全部园区</option>
-            <option v-for="s in scenics" :key="s">{{ s }}</option>
+          <select class="form-select" v-model="filterScenicId">
+            <option value="">全部园区</option>
+            <option v-for="s in scenics" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
-        <div class="form-item">
-          <select class="form-select">
-            <option>全部检票类型</option>
-            <option>入园检票</option>
-            <option>项目检票</option>
-            <option>套餐二次检票</option>
-          </select>
-        </div>
-        <button class="btn btn-default">查询</button>
+        <button class="btn btn-default" @click="loadRecords">查询</button>
         <div style="flex:1;"></div>
         <button class="btn btn-primary" @click="showScanModal = true">扫码检票</button>
-        <button class="btn btn-default">手工检票</button>
       </div>
     </div>
 
@@ -39,7 +30,7 @@
     <div class="card">
       <div class="card-header">
         <span class="card-title">检票记录</span>
-        <button class="btn btn-default btn-sm">导出记录</button>
+        <span class="action-link" @click="loadRecords">刷新</span>
       </div>
       <div class="table-wrap">
         <table>
@@ -48,52 +39,96 @@
               <th>检票码</th>
               <th>票据号</th>
               <th>票种名称</th>
-              <th>票种分组</th>
               <th>园区</th>
               <th>游客姓名</th>
-              <th>检票类型</th>
+              <th>检票方式</th>
               <th>检票时间</th>
               <th>检票人员</th>
               <th>状态</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in verifyRecords" :key="record.code">
-              <td style="font-family:monospace;font-size:12px;color:var(--color-blue);">{{ record.code }}</td>
+            <tr v-if="loading">
+              <td colspan="9" class="empty-state">加载中...</td>
+            </tr>
+            <tr v-else-if="!verifyRecords.length">
+              <td colspan="9" class="empty-state">暂无检票记录</td>
+            </tr>
+            <tr v-for="record in verifyRecords" v-else :key="record.id">
+              <td style="font-family:monospace;font-size:12px;color:var(--color-blue);">{{ record.verifyNo }}</td>
               <td style="font-family:monospace;font-size:12px;color:var(--color-text-muted);">{{ record.voucherCode }}</td>
-              <td>{{ record.ticket }}</td>
-              <td><span class="tag" :class="groupClass(record.group)">{{ record.group }}</span></td>
-              <td>{{ record.scenic }}</td>
-              <td>{{ record.visitor }}</td>
-              <td>{{ record.verifyType }}</td>
-              <td style="font-size:12px;color:var(--color-text-secondary);">{{ record.time }}</td>
-              <td>{{ record.operator }}</td>
-              <td><span class="tag tag-green">检票成功</span></td>
+              <td>{{ record.ticketName }}</td>
+              <td>{{ record.scenicName }}</td>
+              <td>{{ record.visitorName }}</td>
+              <td>{{ record.verifyMethod }}</td>
+              <td style="font-size:12px;color:var(--color-text-secondary);">{{ record.verifyTime }}</td>
+              <td>{{ record.verifyStaffName }}</td>
+              <td>
+                <span class="tag" :class="record.result === '成功' ? 'tag-green' : 'tag-red'">
+                  {{ record.result }}
+                </span>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <div class="pagination">
+        <span class="pagination-info">共 {{ total }} 条</span>
+        <button class="page-btn" :disabled="pageNum <= 1" @click="pageNum--; loadRecords()">«</button>
+        <button v-for="p in pages" :key="p" class="page-btn" :class="{ active: p === pageNum }" @click="pageNum = p; loadRecords()">{{ p }}</button>
+        <button class="page-btn" :disabled="pageNum >= pages" @click="pageNum++; loadRecords()">»</button>
+      </div>
     </div>
 
+    <!-- 扫码检票弹窗 -->
     <div class="modal-mask" v-if="showScanModal" @click.self="showScanModal = false">
-      <div class="modal-box" style="width:420px;">
+      <div class="modal-box" style="width:460px;">
         <div class="modal-header">
-          <span class="modal-title">扫码检票</span>
+          <span class="modal-title">扫码/手工检票</span>
           <button class="modal-close" @click="showScanModal = false">×</button>
         </div>
-        <div class="modal-body" style="text-align:center;">
-          <div style="width:220px;height:220px;border:2px dashed var(--color-border-dark);border-radius:var(--radius-md);margin:0 auto 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--color-gray-50);">
-            <svg width="48" height="48" viewBox="0 0 16 16" fill="var(--color-gray-300)">
-              <path d="M0 .5A.5.5 0 01.5 0h3a.5.5 0 010 1H1v2.5a.5.5 0 01-1 0V.5zm12 0a.5.5 0 01.5-.5h3a.5.5 0 01.5.5v3a.5.5 0 01-1 0V1h-2.5a.5.5 0 01-.5-.5zM.5 12a.5.5 0 01.5.5V15h2.5a.5.5 0 010 1H.5a.5.5 0 01-.5-.5v-3a.5.5 0 01.5-.5zm15 0a.5.5 0 01.5.5v3a.5.5 0 01-.5.5h-3a.5.5 0 010-1H15v-2.5a.5.5 0 01.5-.5z"/>
-            </svg>
-            <div style="font-size:12px;color:var(--color-text-muted);margin-top:8px;">摄像头检票区域</div>
+        <div class="modal-body">
+          <div class="form-vertical">
+            <div class="form-item">
+              <label class="form-label">所属园区</label>
+              <select class="form-select" v-model="form.scenicId">
+                <option value="">请选择</option>
+                <option v-for="s in scenics" :key="s.id" :value="s.id">{{ s.name }}</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label class="form-label">检票方式</label>
+              <select class="form-select" v-model="form.verifyMethod">
+                <option value="扫码">扫码</option>
+                <option value="手工">手工</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label class="form-label">票据码</label>
+              <input class="form-input" v-model="form.voucherCode" placeholder="请输入或扫描票据码" style="font-family:monospace;" />
+            </div>
+            <div class="form-item">
+              <label class="form-label">检票员</label>
+              <input class="form-input" v-model="form.verifyStaffName" placeholder="姓名" />
+            </div>
+            <div class="form-item">
+              <label class="form-label">终端名称</label>
+              <input class="form-input" v-model="form.deviceName" placeholder="如：1号闸机" />
+            </div>
+            <div v-if="lastResult" class="alert" :class="lastResult.result === '成功' ? 'alert-info' : 'alert-error'">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M16 8A8 8 0 11.001 8 8 8 0 0116 8z"/></svg>
+              <div>
+                <div style="font-weight:600;">{{ lastResult.result === '成功' ? '检票成功' : '检票失败：' + (lastResult.failReason || '未知原因') }}</div>
+                <div v-if="lastResult.result === '成功'" style="font-size:12px;margin-top:4px;">
+                  {{ lastResult.ticketName }} / {{ lastResult.scenicName }} / 票价 ¥{{ lastResult.unitPrice }}
+                </div>
+              </div>
+            </div>
           </div>
-          <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:12px;">支持门票入园检票、游玩票项目检票、全包票二次检票</div>
-          <input class="form-input" placeholder="请输入检票码或票据号..." style="width:100%;text-align:center;font-family:monospace;" />
         </div>
         <div class="modal-footer">
-          <button class="btn btn-default" @click="showScanModal = false">取消</button>
-          <button class="btn btn-primary" @click="showScanModal = false">确认检票</button>
+          <button class="btn btn-default" @click="showScanModal = false">关闭</button>
+          <button class="btn btn-primary" :disabled="submitting || !form.voucherCode" @click="doVerify">{{ submitting ? '检票中...' : '确认检票' }}</button>
         </div>
       </div>
     </div>
@@ -101,29 +136,93 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage } from './ui/Message'
+import { listVerifies, verifyVoucher, getTodayStats } from '../api/verify'
+import { listScenicOptions } from '../api/scenic'
 
 const showScanModal = ref(false)
-const scenics = ['青秀山风景区', '南湖公园', '邕江景区']
+const submitting = ref(false)
+const loading = ref(false)
 
-const verifyStats = [
-  { label: '今日检票总量', value: '284', sub: '入园检票 + 项目检票', color: 'var(--color-text-primary)' },
-  { label: '入园检票', value: '198', sub: '门票和全包票首检', color: 'var(--color-blue)' },
-  { label: '项目检票', value: '84', sub: '游玩票和套餐二次检票', color: 'var(--color-green)' },
-  { label: '异常检票', value: '2', sub: '重复检票或票据无效', color: 'var(--color-red)' },
-]
+const scenics = ref([])
+const verifyRecords = ref([])
+const total = ref(0)
+const pageNum = ref(1)
+const pageSize = ref(15)
+const pages = ref(1)
 
-const verifyRecords = [
-  { code: 'VF20260607001', voucherCode: 'VC202606070002', ticket: '邕江夜游全包票', group: '全包票', scenic: '邕江景区', visitor: '李**', verifyType: '入园检票', time: '2026-06-07 09:30', operator: '李检票员' },
-  { code: 'VF20260607002', voucherCode: 'VC202606070003', ticket: '青秀山观光车票', group: '游玩票', scenic: '青秀山风景区', visitor: '王**', verifyType: '项目检票', time: '2026-06-07 09:15', operator: '张检票员' },
-  { code: 'VF20260607003', voucherCode: 'VC202606070001', ticket: '青秀山成人门票', group: '门票', scenic: '青秀山风景区', visitor: '张**', verifyType: '入园检票', time: '2026-06-07 09:05', operator: '王检票员' },
-]
+const filterKeyword = ref('')
+const filterScenicId = ref('')
 
-function groupClass(group) {
-  return {
-    门票: 'tag-blue',
-    游玩票: 'tag-orange',
-    全包票: 'tag-green',
-  }[group] || 'tag-gray'
+const form = reactive({
+  scenicId: '',
+  voucherCode: '',
+  verifyMethod: '扫码',
+  verifyStaffName: '',
+  deviceName: '1号闸机',
+})
+
+const lastResult = ref(null)
+
+const verifyStats = ref([
+  { label: '今日检票总量', value: '0', sub: '入园检票 + 项目检票', color: 'var(--color-text-primary)' },
+  { label: '成功核销', value: '0', sub: '已正常核销', color: 'var(--color-blue)' },
+  { label: '入园检票', value: '0', sub: '门票和全包票首检', color: 'var(--color-blue)' },
+  { label: '异常检票', value: '0', sub: '重复检票或票据无效', color: 'var(--color-red)' },
+])
+
+async function loadScenics() {
+  try { scenics.value = await listScenicOptions() } catch (e) { /* handled */ }
 }
+
+async function loadRecords() {
+  loading.value = true
+  try {
+    const params = { pageNum: pageNum.value, pageSize: pageSize.value }
+    if (filterKeyword.value) params.keyword = filterKeyword.value
+    if (filterScenicId.value) params.scenicId = filterScenicId.value
+    const data = await listVerifies(params)
+    verifyRecords.value = data?.records || []
+    total.value = data?.total || 0
+    pages.value = data?.pages || 1
+  } catch (e) { /* handled */ }
+  finally { loading.value = false }
+}
+
+async function loadStats() {
+  try {
+    const data = await getTodayStats(filterScenicId.value || undefined)
+    if (data) {
+      verifyStats.value[0].value = String(data.totalCount || 0)
+      verifyStats.value[1].value = String(data.successCount || 0)
+      verifyStats.value[2].value = String(data.entryCount || 0)
+      verifyStats.value[3].value = String(data.failCount || 0)
+    }
+  } catch (e) { /* handled */ }
+}
+
+async function doVerify() {
+  submitting.value = true
+  lastResult.value = null
+  try {
+    const result = await verifyVoucher({ ...form })
+    lastResult.value = result
+    if (result?.result === '成功') {
+      ElMessage({ type: 'success', message: '检票成功' })
+      form.voucherCode = ''
+      loadRecords()
+      loadStats()
+    } else {
+      ElMessage({ type: 'error', message: '检票失败：' + (result?.failReason || '原因未知') })
+    }
+  } catch (e) { /* handled */ }
+  finally { submitting.value = false }
+}
+
+onMounted(async () => {
+  await loadScenics()
+  await loadRecords()
+  await loadStats()
+})
 </script>

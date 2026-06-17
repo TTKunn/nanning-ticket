@@ -90,11 +90,11 @@ public class TicketController {
         return Result.success("删除成功", null);
     }
 
-    @Operation(summary = "获取园区下在售的票种下拉选项")
+    @Operation(summary = "获取在售的票种下拉选项（不传 scenicId 则返回全部园区）")
     @GetMapping("/options")
     public Result<List<TicketOptionVO>> listOptions(
-            @Parameter(description = "园区 ID", required = true)
-            @RequestParam Long scenicId) {
+            @Parameter(description = "园区 ID（不传则查询全部园区）", required = false)
+            @RequestParam(required = false) Long scenicId) {
         return Result.success(ticketService.listOptions(scenicId));
     }
 }

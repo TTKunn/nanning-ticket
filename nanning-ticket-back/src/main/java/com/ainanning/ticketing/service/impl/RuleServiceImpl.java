@@ -64,18 +64,15 @@ public class RuleServiceImpl implements RuleService {
                 query.getScenicId(), query.getKeyword(), query.getType(), query.getStatus(),
                 query.getPageNum(), query.getPageSize());
 
-        // 1. 校验 scenicId 必传
-        if (query.getScenicId() == null) {
-            throw new BusinessException(ResultCode.PARAM_ERROR, "scenicId 不能为空");
-        }
-
-        // 2. 构造分页对象
+        // 1. 构造分页对象
         Page<Rule> page = new Page<>(query.getPageNum(), query.getPageSize());
 
-        // 3. 构造查询条件
+        // 2. 构造查询条件
         LambdaQueryWrapper<Rule> wrapper = new LambdaQueryWrapper<>();
         wrapper.isNull(Rule::getDeletedAt);              // 软删过滤
-        wrapper.eq(Rule::getScenicId, query.getScenicId());
+        if (query.getScenicId() != null) {
+            wrapper.eq(Rule::getScenicId, query.getScenicId());
+        }
         if (StringUtils.hasText(query.getKeyword())) {
             String kw = query.getKeyword().trim();
             wrapper.and(w -> w.like(Rule::getName, kw).or().like(Rule::getCode, kw));
@@ -89,10 +86,10 @@ public class RuleServiceImpl implements RuleService {
         wrapper.orderByDesc(Rule::getPriority)
                .orderByDesc(Rule::getId);
 
-        // 4. 执行分页查询
+        // 3. 执行分页查询
         Page<Rule> result = ruleMapper.selectPage(page, wrapper);
 
-        // 5. Entity → VO（注入 scenicName）
+        // 4. Entity → VO（注入 scenicName）
         List<Long> scenicIds = result.getRecords().stream()
                 .map(Rule::getScenicId)
                 .distinct()

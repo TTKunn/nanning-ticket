@@ -69,18 +69,15 @@ public class TicketServiceImpl implements TicketService {
                 query.getScenicId(), query.getKeyword(), query.getCategory(), query.getStatus(),
                 query.getPageNum(), query.getPageSize());
 
-        // 1. 校验 scenicId 必传
-        if (query.getScenicId() == null) {
-            throw new BusinessException(ResultCode.PARAM_ERROR, "scenicId 不能为空");
-        }
-
-        // 2. 构造分页对象
+        // 1. 构造分页对象
         Page<Ticket> page = new Page<>(query.getPageNum(), query.getPageSize());
 
-        // 3. 构造查询条件
+        // 2. 构造查询条件
         LambdaQueryWrapper<Ticket> wrapper = new LambdaQueryWrapper<>();
         wrapper.isNull(Ticket::getDeletedAt);              // 软删过滤
-        wrapper.eq(Ticket::getScenicId, query.getScenicId());
+        if (query.getScenicId() != null) {
+            wrapper.eq(Ticket::getScenicId, query.getScenicId());
+        }
         if (StringUtils.hasText(query.getKeyword())) {
             String kw = query.getKeyword().trim();
             wrapper.and(w -> w.like(Ticket::getName, kw).or().like(Ticket::getCode, kw));
@@ -94,10 +91,10 @@ public class TicketServiceImpl implements TicketService {
         wrapper.orderByDesc(Ticket::getSort)
                .orderByDesc(Ticket::getId);
 
-        // 4. 执行分页查询
+        // 3. 执行分页查询
         Page<Ticket> result = ticketMapper.selectPage(page, wrapper);
 
-        // 5. Entity → VO（注入 scenicName + ruleNames）
+        // 4. Entity → VO（注入 scenicName + ruleNames）
         List<Long> scenicIds = result.getRecords().stream()
                 .map(Ticket::getScenicId)
                 .distinct()
@@ -294,22 +291,23 @@ public class TicketServiceImpl implements TicketService {
     @Override
     public List<TicketOptionVO> listOptions(Long scenicId) {
         log.info("[票种] 查询下拉选项 scenicId={}", scenicId);
-        if (scenicId == null) {
-            return Collections.emptyList();
-        }
         LambdaQueryWrapper<Ticket> wrapper = new LambdaQueryWrapper<>();
         wrapper.isNull(Ticket::getDeletedAt)
-               .eq(Ticket::getScenicId, scenicId)
-               .eq(Ticket::getStatus, STATUS_ON_SALE)
-               .orderByDesc(Ticket::getSort)
+               .eq(Ticket::getStatus, STATUS_ON_SALE);
+        if (scenicId != null) {
+            wrapper.eq(Ticket::getScenicId, scenicId);
+        }
+        wrapper.orderByDesc(Ticket::getSort)
                .orderByDesc(Ticket::getId);
 
         List<Ticket> tickets = ticketMapper.selectList(wrapper);
         if (tickets.isEmpty()) {
             return Collections.emptyList();
         }
-        // 注入 scenicName
-        String scenicName = loadScenicName(scenicId);
+        // 注入 scenicName：批量查，避免 N+1
+        List<Long> scenicIds = tickets.stream().map(Ticket::getScenicId)
+                .filter(java.util.Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<Long, String> scenicNameMap = loadScenicNameMap(scenicIds);
         return tickets.stream()
                 .map(t -> TicketOptionVO.builder()
                         .id(t.getId())
@@ -317,7 +315,7 @@ public class TicketServiceImpl implements TicketService {
                         .code(t.getCode())
                         .price(t.getPrice())
                         .scenicId(t.getScenicId())
-                        .scenicName(scenicName)
+                        .scenicName(scenicNameMap.get(t.getScenicId()))
                         .category(t.getCategory())
                         .build())
                 .collect(Collectors.toList());

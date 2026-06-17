@@ -12,32 +12,32 @@
 
     <div class="alert alert-info">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 108 0a8 8 0 000 16zm.93-9.412l-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 110-2 1 1 0 010 2z"/></svg>
-      当前原型按“园区 -> 项目规则 -> 票种”组织，支持把门票、游玩票、全包票分开配置。
+      当前原型按"园区 -> 项目规则 -> 票种"组织，支持把门票、游玩票、全包票分开配置。
     </div>
 
     <div class="card" style="margin-bottom:12px;">
       <div class="toolbar">
         <div class="form-item">
-          <input class="form-input" placeholder="规则名称/收费项目..." style="width:220px;" />
+          <input class="form-input" v-model="filterKeyword" placeholder="规则名称/收费项目..." style="width:220px;" />
         </div>
         <div class="form-item">
-          <select class="form-select">
-            <option>全部园区</option>
-            <option v-for="scenic in scenics" :key="scenic">{{ scenic }}</option>
+          <select class="form-select" v-model="filterScenicId">
+            <option value="">全部园区</option>
+            <option v-for="s in scenics" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
         <div class="form-item">
-          <select class="form-select">
-            <option>全部票组</option>
-            <option>门票</option>
-            <option>游玩票</option>
-            <option>全包票</option>
-            <option>套票</option>
+          <select class="form-select" v-model="filterType">
+            <option value="">全部类型</option>
+            <option value="折扣">折扣</option>
+            <option value="减免">减免</option>
+            <option value="套餐">套餐</option>
+            <option value="限制">限制</option>
           </select>
         </div>
-        <button class="btn btn-default">查询</button>
+        <button class="btn btn-default" @click="loadRules">查询</button>
         <div style="flex:1;"></div>
-        <button class="btn btn-primary" @click="showModal = true">新增项目规则</button>
+        <button class="btn btn-primary" @click="openCreate">新增项目规则</button>
       </div>
     </div>
 
@@ -52,48 +52,55 @@
             <tr>
               <th>园区</th>
               <th>规则名称</th>
-              <th>票种分组</th>
-              <th>收费对象</th>
-              <th>核销方式</th>
-              <th>退票规则</th>
-              <th>关联票种</th>
-              <th>售卖渠道</th>
+              <th>类型</th>
+              <th>优先级</th>
+              <th>有效期</th>
               <th>状态</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="rule in ruleList" :key="rule.name">
-              <td>{{ rule.scenic }}</td>
+            <tr v-if="loading">
+              <td colspan="7" class="empty-state">加载中...</td>
+            </tr>
+            <tr v-else-if="!ruleList.length">
+              <td colspan="7" class="empty-state">暂无规则数据</td>
+            </tr>
+            <tr v-for="rule in ruleList" v-else :key="rule.id">
+              <td>{{ rule.scenicName }}</td>
               <td>
                 <div style="font-weight:600;">{{ rule.name }}</div>
-                <div style="font-size:11px;color:var(--color-text-muted);">{{ rule.desc }}</div>
+                <div style="font-size:11px;color:var(--color-text-muted);">{{ rule.description }}</div>
               </td>
-              <td><span class="tag" :class="groupClass(rule.group)">{{ rule.group }}</span></td>
-              <td>{{ rule.target }}</td>
-              <td>{{ rule.verifyMode }}</td>
-              <td>{{ rule.refundRule }}</td>
-              <td>{{ rule.ticketCount }} 种</td>
-              <td style="font-size:12px;color:var(--color-text-secondary);">{{ rule.channels }}</td>
-              <td><span class="tag" :class="rule.enabled ? 'tag-green' : 'tag-gray'">{{ rule.enabled ? '启用中' : '停用' }}</span></td>
+              <td><span class="tag" :class="typeClass(rule.type)">{{ rule.type }}</span></td>
+              <td>{{ rule.priority }}</td>
+              <td style="font-size:12px;color:var(--color-text-secondary);">
+                {{ rule.effectiveFrom || '—' }} ~ {{ rule.effectiveTo || '永久' }}
+              </td>
+              <td><span class="tag" :class="rule.status === '启用' ? 'tag-green' : 'tag-gray'">{{ rule.status }}</span></td>
               <td>
                 <div style="display:flex;gap:8px;">
                   <span class="action-link" @click="openEdit(rule)">编辑</span>
-                  <span class="action-link">关联票种</span>
-                  <span class="action-link danger">{{ rule.enabled ? '停用' : '启用' }}</span>
+                  <span class="action-link danger" @click="toggleStatus(rule)">
+                    {{ rule.status === '启用' ? '停用' : '启用' }}
+                  </span>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <div class="pagination">
+        <span class="pagination-info">共 {{ total }} 条</span>
+        <button class="page-btn" :disabled="pageNum <= 1" @click="pageNum--; loadRules()">«</button>
+        <button v-for="p in pages" :key="p" class="page-btn" :class="{ active: p === pageNum }" @click="pageNum = p; loadRules()">{{ p }}</button>
+        <button class="page-btn" :disabled="pageNum >= pages" @click="pageNum++; loadRules()">»</button>
+      </div>
     </div>
 
     <div class="grid-2">
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">设计建议</span>
-        </div>
+        <div class="card-header"><span class="card-title">设计建议</span></div>
         <div class="card-body" style="font-size:13px;color:var(--color-text-secondary);display:grid;gap:10px;">
           <div><strong style="color:var(--color-text-primary);">门票</strong>：用于园区入园收费，通常一票一次入园，可与游玩票拆开核销。</div>
           <div><strong style="color:var(--color-text-primary);">游玩票</strong>：用于园区内单独收费项目，如游船、索道、演艺、设备体验。</div>
@@ -103,16 +110,11 @@
       </div>
 
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">规则字段建议</span>
-        </div>
+        <div class="card-header"><span class="card-title">规则字段建议</span></div>
         <div class="card-body">
           <table>
             <thead>
-              <tr>
-                <th>字段</th>
-                <th>建议说明</th>
-              </tr>
+              <tr><th>字段</th><th>建议说明</th></tr>
             </thead>
             <tbody>
               <tr v-for="field in ruleFields" :key="field.name">
@@ -126,7 +128,7 @@
     </div>
 
     <div class="modal-mask" v-if="showModal" @click.self="showModal = false">
-      <div class="modal-box" style="width:760px;">
+      <div class="modal-box" style="width:680px;">
         <div class="modal-header">
           <span class="modal-title">{{ editingRule ? '编辑项目规则' : '新增项目规则' }}</span>
           <button class="modal-close" @click="showModal = false">×</button>
@@ -136,82 +138,60 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
               <div class="form-item">
                 <label class="form-label">所属园区</label>
-                <select class="form-select">
-                  <option v-for="scenic in scenics" :key="scenic">{{ scenic }}</option>
+                <select class="form-select" v-model="form.scenicId">
+                  <option value="">请选择</option>
+                  <option v-for="s in scenics" :key="s.id" :value="s.id">{{ s.name }}</option>
                 </select>
               </div>
               <div class="form-item">
                 <label class="form-label">规则名称</label>
-                <input class="form-input" :value="editingRule?.name || ''" placeholder="如：园区入园规则" />
+                <input class="form-input" v-model="form.name" placeholder="如：园区入园规则" />
               </div>
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
               <div class="form-item">
-                <label class="form-label">票种分组</label>
-                <select class="form-select">
-                  <option>门票</option>
-                  <option>游玩票</option>
-                  <option>全包票</option>
-                  <option>套票</option>
+                <label class="form-label">规则类型</label>
+                <select class="form-select" v-model="form.type">
+                  <option value="折扣">折扣</option>
+                  <option value="减免">减免</option>
+                  <option value="套餐">套餐</option>
+                  <option value="限制">限制</option>
                 </select>
               </div>
               <div class="form-item">
-                <label class="form-label">收费对象</label>
-                <select class="form-select">
-                  <option>园区入园</option>
-                  <option>园区内单项目</option>
-                  <option>多个项目打包</option>
-                </select>
+                <label class="form-label">优先级</label>
+                <input class="form-input" type="number" v-model="form.priority" placeholder="数字越大越优先" />
               </div>
               <div class="form-item">
-                <label class="form-label">核销方式</label>
-                <select class="form-select">
-                  <option>单次核销</option>
-                  <option>分项目核销</option>
-                  <option>入园+项目双核销</option>
+                <label class="form-label">状态</label>
+                <select class="form-select" v-model="form.status">
+                  <option value="启用">启用</option>
+                  <option value="禁用">禁用</option>
                 </select>
-              </div>
-            </div>
-
-            <div class="form-item">
-              <label class="form-label">包含项目</label>
-              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:13px;color:var(--color-text-secondary);">
-                <label><input type="checkbox" checked /> 园区入园</label>
-                <label><input type="checkbox" /> 玻璃栈道</label>
-                <label><input type="checkbox" /> 游船</label>
-                <label><input type="checkbox" /> 小火车</label>
               </div>
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
               <div class="form-item">
-                <label class="form-label">退票规则</label>
-                <select class="form-select">
-                  <option>未使用可退</option>
-                  <option>未使用可退 + 过期自动退</option>
-                  <option>仅过期自动退</option>
-                </select>
+                <label class="form-label">生效起</label>
+                <input class="form-input" type="date" v-model="form.effectiveFrom" />
               </div>
               <div class="form-item">
-                <label class="form-label">适用渠道</label>
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:13px;color:var(--color-text-secondary);margin-top:8px;">
-                  <label><input type="checkbox" checked /> 本地系统</label>
-                  <label><input type="checkbox" checked /> 网售</label>
-                  <label><input type="checkbox" checked /> 分销平台</label>
-                </div>
+                <label class="form-label">生效止</label>
+                <input class="form-input" type="date" v-model="form.effectiveTo" />
               </div>
             </div>
 
             <div class="form-item">
               <label class="form-label">规则说明</label>
-              <textarea class="form-textarea" placeholder="说明该规则对应的收费边界、可售票种和检退票要求..."></textarea>
+              <textarea class="form-textarea" v-model="form.description" placeholder="说明该规则对应的收费边界、可售票种和检退票要求..."></textarea>
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-default" @click="showModal = false">取消</button>
-          <button class="btn btn-primary" @click="showModal = false">保存规则</button>
+          <button class="btn btn-primary" :disabled="saving" @click="submitForm">{{ saving ? '保存中...' : '保存规则' }}</button>
         </div>
       </div>
     </div>
@@ -219,46 +199,146 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage } from './ui/Message'
+import { listRules, createRule, updateRule, toggleRuleStatus } from '../api/rule'
+import { listScenicOptions } from '../api/scenic'
+
+const ruleList = ref([])
+const total = ref(0)
+const pageNum = ref(1)
+const pageSize = ref(10)
+const pages = ref(1)
+const loading = ref(false)
+const saving = ref(false)
+
+const scenics = ref([])
+
+const filterKeyword = ref('')
+const filterScenicId = ref('')
+const filterType = ref('')
+
+const summaryStats = ref([
+  { label: '项目规则总数', value: '0', sub: '覆盖 0 个园区，启用中 0 个' },
+  { label: '折扣规则', value: '0', sub: '按优先级匹配' },
+  { label: '减免规则', value: '0', sub: '面向特殊人群' },
+  { label: '套餐/限制规则', value: '0', sub: '组合销售场景' },
+])
 
 const showModal = ref(false)
 const editingRule = ref(null)
-
-const scenics = ['青秀山风景区', '南湖公园', '广西民族博物馆', '邕江景区']
-
-const summaryStats = [
-  { label: '园区项目规则', value: '9', sub: '覆盖 4 个园区，启用中 8 个' },
-  { label: '门票规则', value: '4', sub: '入园收费规则单独维护' },
-  { label: '游玩票规则', value: '3', sub: '支持项目独立检票' },
-  { label: '全包/套票规则', value: '2', sub: '用于联票和组合套餐' },
-]
-
-const ruleList = [
-  { scenic: '青秀山风景区', name: '青秀山园区入园规则', desc: '园区入园收费一次', group: '门票', target: '园区入园', verifyMode: '单次核销', refundRule: '未使用可退', ticketCount: 3, channels: '本地系统、网售、分销', enabled: true },
-  { scenic: '青秀山风景区', name: '青秀山观光车规则', desc: '园区内游玩项目单独收费', group: '游玩票', target: '园区内单项目', verifyMode: '单项目核销', refundRule: '未使用可退', ticketCount: 2, channels: '本地系统、网售', enabled: true },
-  { scenic: '邕江景区', name: '夜游全包票规则', desc: '入园+游船一体化套餐', group: '全包票', target: '多个项目打包', verifyMode: '双核销', refundRule: '未使用可退 + 过期自动退', ticketCount: 1, channels: '网售、分销', enabled: true },
-  { scenic: '南湖公园', name: '联票活动规则', desc: '节假日套票组合', group: '套票', target: '多个项目打包', verifyMode: '分项目核销', refundRule: '过期自动退', ticketCount: 2, channels: '本地系统、网售', enabled: false },
-]
+const form = reactive({
+  scenicId: '',
+  name: '',
+  type: '折扣',
+  priority: 100,
+  status: '启用',
+  effectiveFrom: '',
+  effectiveTo: '',
+  description: '',
+})
 
 const ruleFields = [
-  { name: '票种分组', desc: '区分门票、游玩票、全包票，决定后续配置入口和库存方式。' },
-  { name: '收费对象', desc: '明确是园区入园收费还是园区内某个游玩项目收费。' },
-  { name: '核销方式', desc: '决定是一次性核销还是入园、项目分开核销。' },
-  { name: '退票规则', desc: '当前按简化策略配置为未使用可退、过期自动退。' },
-  { name: '关联票种', desc: '规则下可挂多个票种，不同票种共享同一业务规则。' },
+  { name: '规则类型', desc: '区分折扣、减免、套餐、限制，决定规则作用于价格还是流程。' },
+  { name: '优先级', desc: '数字越大越优先；多规则叠加时按优先级排序生效。' },
+  { name: '适用范围', desc: '通过园区 + 票种 + 渠道三个维度控制规则的命中范围。' },
+  { name: '生效区间', desc: '留空代表永久生效；指定起止日期后按区间启用。' },
+  { name: '状态', desc: '启用表示参与价格计算，禁用表示停用但保留配置。' },
 ]
 
-function groupClass(group) {
+function typeClass(type) {
   return {
-    门票: 'tag-blue',
-    游玩票: 'tag-orange',
-    全包票: 'tag-green',
-    套票: 'tag-gray',
-  }[group] || 'tag-gray'
+    折扣: 'tag-blue',
+    减免: 'tag-orange',
+    套餐: 'tag-green',
+    限制: 'tag-gray',
+  }[type] || 'tag-gray'
+}
+
+async function loadScenics() {
+  try {
+    scenics.value = await listScenicOptions()
+  } catch (e) { /* handled */ }
+}
+
+async function loadRules() {
+  loading.value = true
+  try {
+    const params = { pageNum: pageNum.value, pageSize: pageSize.value }
+    if (filterKeyword.value) params.keyword = filterKeyword.value
+    if (filterScenicId.value) params.scenicId = filterScenicId.value
+    if (filterType.value) params.type = filterType.value
+    const data = await listRules(params)
+    ruleList.value = data?.records || []
+    total.value = data?.total || 0
+    pages.value = data?.pages || 1
+    // 统计卡片
+    summaryStats.value[0].value = String(total.value)
+    summaryStats.value[0].sub = `覆盖 ${scenics.value.length || 0} 个园区，启用中 ${ruleList.value.filter(r => r.status === '启用').length} 个`
+    summaryStats.value[1].value = String(ruleList.value.filter(r => r.type === '折扣').length)
+    summaryStats.value[2].value = String(ruleList.value.filter(r => r.type === '减免').length)
+    summaryStats.value[3].value = String(ruleList.value.filter(r => r.type === '套餐' || r.type === '限制').length)
+  } catch (e) { /* handled */ }
+  finally { loading.value = false }
+}
+
+function resetForm() {
+  Object.assign(form, {
+    scenicId: '', name: '', type: '折扣', priority: 100,
+    status: '启用', effectiveFrom: '', effectiveTo: '', description: '',
+  })
+}
+
+function openCreate() {
+  editingRule.value = null
+  resetForm()
+  showModal.value = true
 }
 
 function openEdit(rule) {
   editingRule.value = rule
+  Object.assign(form, {
+    scenicId: rule.scenicId,
+    name: rule.name,
+    type: rule.type,
+    priority: rule.priority || 100,
+    status: rule.status,
+    effectiveFrom: rule.effectiveFrom || '',
+    effectiveTo: rule.effectiveTo || '',
+    description: rule.description || '',
+  })
   showModal.value = true
 }
+
+async function submitForm() {
+  if (!form.scenicId) { ElMessage({ type: 'warning', message: '请选择所属园区' }); return }
+  if (!form.name) { ElMessage({ type: 'warning', message: '请填写规则名称' }); return }
+  saving.value = true
+  try {
+    if (editingRule.value) {
+      await updateRule(editingRule.value.id, form)
+      ElMessage({ type: 'success', message: '保存成功' })
+    } else {
+      await createRule(form)
+      ElMessage({ type: 'success', message: '新增成功' })
+    }
+    showModal.value = false
+    loadRules()
+  } catch (e) { /* handled */ }
+  finally { saving.value = false }
+}
+
+async function toggleStatus(rule) {
+  const next = rule.status === '启用' ? '禁用' : '启用'
+  try {
+    await toggleRuleStatus(rule.id, next)
+    ElMessage({ type: 'success', message: '状态已更新' })
+    loadRules()
+  } catch (e) { /* handled */ }
+}
+
+onMounted(async () => {
+  await loadScenics()
+  await loadRules()
+})
 </script>

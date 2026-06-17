@@ -15,7 +15,7 @@ import lombok.EqualsAndHashCode;
 @Schema(description = "票种查询参数")
 public class TicketQueryDTO extends PageQuery {
 
-    @Schema(description = "所属园区 ID（必传）")
+    @Schema(description = "所属园区 ID（不传则查询全部园区）")
     private Long scenicId;
 
     @Schema(description = "关键字（匹配票种名称 / 编码，模糊）")
