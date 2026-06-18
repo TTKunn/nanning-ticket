@@ -51,6 +51,7 @@
           <thead>
             <tr>
               <th>园区</th>
+              <th>规则编码</th>
               <th>规则名称</th>
               <th>类型</th>
               <th>优先级</th>
@@ -61,13 +62,14 @@
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="7" class="empty-state">加载中...</td>
+              <td colspan="8" class="empty-state">加载中...</td>
             </tr>
             <tr v-else-if="!ruleList.length">
-              <td colspan="7" class="empty-state">暂无规则数据</td>
+              <td colspan="8" class="empty-state">暂无规则数据</td>
             </tr>
             <tr v-for="rule in ruleList" v-else :key="rule.id">
               <td>{{ rule.scenicName }}</td>
+              <td style="font-family:monospace;color:var(--color-text-secondary);">{{ rule.code || '—' }}</td>
               <td>
                 <div style="font-weight:600;">{{ rule.name }}</div>
                 <div style="font-size:11px;color:var(--color-text-muted);">{{ rule.description }}</div>
@@ -135,7 +137,7 @@
         </div>
         <div class="modal-body">
           <div class="form-vertical">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
               <div class="form-item">
                 <label class="form-label">所属园区</label>
                 <select class="form-select" v-model="form.scenicId">
@@ -144,7 +146,11 @@
                 </select>
               </div>
               <div class="form-item">
-                <label class="form-label">规则名称</label>
+                <label class="form-label">规则编码 <span style="color:var(--color-danger);">*</span></label>
+                <input class="form-input" v-model="form.code" placeholder="如：ENTRY_BASE_RULE" style="font-family:monospace;" />
+              </div>
+              <div class="form-item">
+                <label class="form-label">规则名称 <span style="color:var(--color-danger);">*</span></label>
                 <input class="form-input" v-model="form.name" placeholder="如：园区入园规则" />
               </div>
             </div>
@@ -178,8 +184,14 @@
                 <input class="form-input" type="date" v-model="form.effectiveFrom" />
               </div>
               <div class="form-item">
-                <label class="form-label">生效止</label>
-                <input class="form-input" type="date" v-model="form.effectiveTo" />
+                <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+                  <span>生效止</span>
+                  <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--color-text-secondary);font-weight:normal;cursor:pointer;">
+                    <input type="checkbox" v-model="form.permanent" />
+                    永久
+                  </label>
+                </label>
+                <input class="form-input" type="date" v-model="form.effectiveTo" :disabled="form.permanent" :placeholder="form.permanent ? '永久生效' : ''" />
               </div>
             </div>
 
@@ -229,16 +241,19 @@ const showModal = ref(false)
 const editingRule = ref(null)
 const form = reactive({
   scenicId: '',
+  code: '',
   name: '',
   type: '折扣',
   priority: 100,
   status: '启用',
   effectiveFrom: '',
   effectiveTo: '',
+  permanent: false,
   description: '',
 })
 
 const ruleFields = [
+  { name: '规则编码', desc: '同一园区下唯一，建议使用大写英文加下划线（如 ENTRY_BASE_RULE）。' },
   { name: '规则类型', desc: '区分折扣、减免、套餐、限制，决定规则作用于价格还是流程。' },
   { name: '优先级', desc: '数字越大越优先；多规则叠加时按优先级排序生效。' },
   { name: '适用范围', desc: '通过园区 + 票种 + 渠道三个维度控制规则的命中范围。' },
@@ -284,8 +299,8 @@ async function loadRules() {
 
 function resetForm() {
   Object.assign(form, {
-    scenicId: '', name: '', type: '折扣', priority: 100,
-    status: '启用', effectiveFrom: '', effectiveTo: '', description: '',
+    scenicId: '', code: '', name: '', type: '折扣', priority: 100,
+    status: '启用', effectiveFrom: '', effectiveTo: '', permanent: false, description: '',
   })
 }
 
@@ -299,12 +314,14 @@ function openEdit(rule) {
   editingRule.value = rule
   Object.assign(form, {
     scenicId: rule.scenicId,
+    code: rule.code || '',
     name: rule.name,
     type: rule.type,
     priority: rule.priority || 100,
     status: rule.status,
     effectiveFrom: rule.effectiveFrom || '',
     effectiveTo: rule.effectiveTo || '',
+    permanent: !rule.effectiveTo,
     description: rule.description || '',
   })
   showModal.value = true
@@ -312,14 +329,27 @@ function openEdit(rule) {
 
 async function submitForm() {
   if (!form.scenicId) { ElMessage({ type: 'warning', message: '请选择所属园区' }); return }
+  if (!form.code) { ElMessage({ type: 'warning', message: '请填写规则编码' }); return }
   if (!form.name) { ElMessage({ type: 'warning', message: '请填写规则名称' }); return }
+  // 构造提交载荷：勾选"永久"时清空 effectiveTo，并剔除前端专用字段
+  const payload = {
+    scenicId: form.scenicId,
+    code: form.code,
+    name: form.name,
+    type: form.type,
+    priority: form.priority,
+    status: form.status,
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.permanent ? null : (form.effectiveTo || null),
+    description: form.description,
+  }
   saving.value = true
   try {
     if (editingRule.value) {
-      await updateRule(editingRule.value.id, form)
+      await updateRule(editingRule.value.id, payload)
       ElMessage({ type: 'success', message: '保存成功' })
     } else {
-      await createRule(form)
+      await createRule(payload)
       ElMessage({ type: 'success', message: '新增成功' })
     }
     showModal.value = false

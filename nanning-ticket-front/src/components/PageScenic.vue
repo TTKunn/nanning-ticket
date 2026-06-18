@@ -251,7 +251,15 @@ async function submitForm() {
     showModal.value = false
     loadScenics()
   } catch (e) {
-    // 错误提示已由拦截器处理
+    // 网络中断时：后端事务可能已 commit，提示用户去列表确认而非冷弹"超时"
+    const msg = e?.message || ''
+    if (e?.code === 'ECONNABORTED' || msg.includes('timeout') || msg.includes('超时')) {
+      ElMessage({
+        type: 'warning',
+        message: '响应超时（数据可能已写入），请到列表中确认',
+        duration: 4500,
+      })
+    }
   } finally {
     saving.value = false
   }

@@ -3,7 +3,9 @@ package com.ainanning.ticketing.service.impl;
 import com.ainanning.ticketing.common.exception.BusinessException;
 import com.ainanning.ticketing.common.result.ResultCode;
 import com.ainanning.ticketing.common.vo.PageVO;
+import com.ainanning.ticketing.dto.InventoryBatchDeleteDTO;
 import com.ainanning.ticketing.dto.InventoryBatchDTO;
+import com.ainanning.ticketing.dto.InventoryBatchUpdateDTO;
 import com.ainanning.ticketing.dto.InventoryQueryDTO;
 import com.ainanning.ticketing.dto.InventorySaveDTO;
 import com.ainanning.ticketing.entity.Inventory;
@@ -13,6 +15,7 @@ import com.ainanning.ticketing.mapper.InventoryMapper;
 import com.ainanning.ticketing.mapper.ScenicMapper;
 import com.ainanning.ticketing.mapper.TicketMapper;
 import com.ainanning.ticketing.service.InventoryService;
+import com.ainanning.ticketing.vo.BatchOpResultVO;
 import com.ainanning.ticketing.vo.InventoryVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -115,6 +118,23 @@ public class InventoryServiceImpl implements InventoryService {
             throw new BusinessException(ResultCode.INVENTORY_NOT_FOUND);
         }
         return enrichRecords(Collections.singletonList(entity)).get(0);
+    }
+
+    @Override
+    public List<LocalDate> listExistingDates(Long ticketId) {
+        if (ticketId == null) {
+            return Collections.emptyList();
+        }
+        log.info("[库存] 查询票种已存在日期 ticketId={}", ticketId);
+        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.isNull(Inventory::getDeletedAt)
+                .eq(Inventory::getTicketId, ticketId)
+                .select(Inventory::getInventoryDate)
+                .orderByAsc(Inventory::getInventoryDate);
+        return inventoryMapper.selectList(wrapper).stream()
+                .map(Inventory::getInventoryDate)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -319,6 +339,224 @@ public class InventoryServiceImpl implements InventoryService {
             throw new BusinessException(ResultCode.INVENTORY_DELETE_FAILED);
         }
         log.info("[库存] 删除成功 id={}", id);
+    }
+
+    /* ====================== 批量操作 ====================== */
+
+    /** 批量操作白名单：避免魔数散落 */
+    private static final String OP_SET_TOTAL   = "SET_TOTAL";
+    private static final String OP_INCREMENT   = "INCREMENT";
+    private static final String OP_DECREMENT   = "DECREMENT";
+    private static final String OP_SET_STATUS  = "SET_STATUS";
+    private static final String OP_SET_REMARK  = "SET_REMARK";
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public BatchOpResultVO updateBatch(InventoryBatchUpdateDTO dto) {
+        log.info("[库存] 批量更新 op={}, ticketId={}, dateFrom={}, dateTo={}, dates={}",
+                dto.getOperation(), dto.getTicketId(),
+                dto.getDateFrom(), dto.getDateTo(),
+                dto.getDates() == null ? 0 : dto.getDates().size());
+
+        // 1. 校验 operation 合法性
+        String op = dto.getOperation();
+        if (op == null
+                || (!OP_SET_TOTAL.equals(op) && !OP_INCREMENT.equals(op)
+                && !OP_DECREMENT.equals(op) && !OP_SET_STATUS.equals(op)
+                && !OP_SET_REMARK.equals(op))) {
+            throw new BusinessException(ResultCode.INVENTORY_BATCH_OP_INVALID);
+        }
+        // 2. 校验 target 至少有一项
+        if (dto.getTicketId() == null
+                && (dto.getDateFrom() == null || dto.getDateTo() == null)
+                && (dto.getDates() == null || dto.getDates().isEmpty())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR,
+                    "请至少指定：票种 + 日期范围，或显式日期列表");
+        }
+
+        // 3. 取出命中记录
+        List<Inventory> targets = findBatchTargets(dto.getTicketId(),
+                dto.getDateFrom(), dto.getDateTo(), dto.getDates());
+        if (targets.isEmpty()) {
+            throw new BusinessException(ResultCode.INVENTORY_BATCH_TARGET_EMPTY);
+        }
+
+        // 4. 逐条应用操作
+        boolean skipSold = dto.getSkipSold() == null || dto.getSkipSold();
+        int success = 0;
+        Map<String, String> skipped = new HashMap<>();
+        List<Long> skippedIds = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (Inventory inv : targets) {
+            int sold = inv.getSold() == null ? 0 : inv.getSold();
+            int reserved = inv.getReserved() == null ? 0 : inv.getReserved();
+
+            // SET_TOTAL：直接覆盖
+            if (OP_SET_TOTAL.equals(op)) {
+                if (skipSold && sold > 0) {
+                    skipped.put(String.valueOf(inv.getInventoryDate()), "已有销售记录");
+                    skippedIds.add(inv.getId());
+                    continue;
+                }
+                Integer newTotal = dto.getTotal();
+                if (newTotal == null || newTotal < sold + reserved) {
+                    skipped.put(String.valueOf(inv.getInventoryDate()),
+                            "目标库存小于已售+预占(" + (sold + reserved) + ")");
+                    skippedIds.add(inv.getId());
+                    continue;
+                }
+                Inventory patch = new Inventory();
+                patch.setId(inv.getId());
+                patch.setTotal(newTotal);
+                patch.setAvailable(Math.max(0, newTotal - sold - reserved));
+                patch.setUpdatedAt(now);
+                inventoryMapper.updateById(patch);
+                success++;
+            }
+            // INCREMENT / DECREMENT：相对值
+            else if (OP_INCREMENT.equals(op) || OP_DECREMENT.equals(op)) {
+                if (dto.getDelta() == null) {
+                    skipped.put(String.valueOf(inv.getInventoryDate()), "缺少增减量 delta");
+                    skippedIds.add(inv.getId());
+                    continue;
+                }
+                int cur = inv.getTotal() == null ? 0 : inv.getTotal();
+                int newTotal = OP_INCREMENT.equals(op) ? cur + dto.getDelta() : cur - dto.getDelta();
+                if (skipSold && sold > 0) {
+                    skipped.put(String.valueOf(inv.getInventoryDate()), "已有销售记录");
+                    skippedIds.add(inv.getId());
+                    continue;
+                }
+                if (newTotal < sold + reserved) {
+                    skipped.put(String.valueOf(inv.getInventoryDate()),
+                            "结果库存小于已售+预占(" + (sold + reserved) + ")");
+                    skippedIds.add(inv.getId());
+                    continue;
+                }
+                Inventory patch = new Inventory();
+                patch.setId(inv.getId());
+                patch.setTotal(newTotal);
+                patch.setAvailable(Math.max(0, newTotal - sold - reserved));
+                patch.setUpdatedAt(now);
+                inventoryMapper.updateById(patch);
+                success++;
+            }
+            // SET_STATUS：开放/关闭
+            else if (OP_SET_STATUS.equals(op)) {
+                String s = dto.getStatus();
+                validateStatus(s);
+                if (s.equals(inv.getStatus())) {
+                    // 状态未变，跳过但不算失败
+                    continue;
+                }
+                Inventory patch = new Inventory();
+                patch.setId(inv.getId());
+                patch.setStatus(s);
+                patch.setUpdatedAt(now);
+                inventoryMapper.updateById(patch);
+                success++;
+            }
+            // SET_REMARK
+            else if (OP_SET_REMARK.equals(op)) {
+                Inventory patch = new Inventory();
+                patch.setId(inv.getId());
+                patch.setRemark(dto.getRemark());
+                patch.setUpdatedAt(now);
+                inventoryMapper.updateById(patch);
+                success++;
+            }
+        }
+
+        log.info("[库存] 批量更新完成 op={} 命中={} 成功={} 跳过={}",
+                op, targets.size(), success, skipped.size());
+        return BatchOpResultVO.builder()
+                .successCount(success)
+                .skipCount(skipped.size())
+                .skipped(skipped)
+                .skippedIds(skippedIds)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public BatchOpResultVO deleteBatch(InventoryBatchDeleteDTO dto) {
+        log.info("[库存] 批量删除 ticketId={}, dateFrom={}, dateTo={}, dates={}, onlyUnsold={}",
+                dto.getTicketId(), dto.getDateFrom(), dto.getDateTo(),
+                dto.getDates() == null ? 0 : dto.getDates().size(), dto.getOnlyUnsold());
+
+        // 校验 target
+        if (dto.getTicketId() == null
+                && (dto.getDateFrom() == null || dto.getDateTo() == null)
+                && (dto.getDates() == null || dto.getDates().isEmpty())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR,
+                    "请至少指定：票种 + 日期范围，或显式日期列表");
+        }
+
+        List<Inventory> targets = findBatchTargets(dto.getTicketId(),
+                dto.getDateFrom(), dto.getDateTo(), dto.getDates());
+        if (targets.isEmpty()) {
+            throw new BusinessException(ResultCode.INVENTORY_BATCH_TARGET_EMPTY);
+        }
+
+        boolean onlyUnsold = dto.getOnlyUnsold() == null || dto.getOnlyUnsold();
+        int success = 0;
+        Map<String, String> skipped = new HashMap<>();
+        List<Long> skippedIds = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (Inventory inv : targets) {
+            int sold = inv.getSold() == null ? 0 : inv.getSold();
+            if (onlyUnsold && sold > 0) {
+                skipped.put(String.valueOf(inv.getInventoryDate()),
+                        "已有 " + sold + " 张售出");
+                skippedIds.add(inv.getId());
+                continue;
+            }
+            Inventory patch = new Inventory();
+            patch.setId(inv.getId());
+            patch.setDeletedAt(now);
+            int rows = inventoryMapper.updateById(patch);
+            if (rows > 0) success++;
+        }
+
+        log.info("[库存] 批量删除完成 命中={} 成功={} 跳过={}",
+                targets.size(), success, skipped.size());
+        return BatchOpResultVO.builder()
+                .successCount(success)
+                .skipCount(skipped.size())
+                .skipped(skipped)
+                .skippedIds(skippedIds)
+                .build();
+    }
+
+    /**
+     * 按 (ticketId?, dateFrom?, dateTo?, dates?) 拼出命中记录的查询条件并返回。
+     * 日期范围与显式日期列表是并集关系。
+     */
+    private List<Inventory> findBatchTargets(Long ticketId, LocalDate dateFrom,
+                                             LocalDate dateTo, List<LocalDate> dates) {
+        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.isNull(Inventory::getDeletedAt);
+        if (ticketId != null) {
+            wrapper.eq(Inventory::getTicketId, ticketId);
+        }
+        // 日期条件：范围 与 列表 取并集
+        boolean hasRange = dateFrom != null && dateTo != null;
+        boolean hasList = dates != null && !dates.isEmpty();
+        if (hasRange && hasList) {
+            wrapper.and(w -> w
+                    .between(Inventory::getInventoryDate, dateFrom, dateTo)
+                    .or().in(Inventory::getInventoryDate, dates));
+        } else if (hasRange) {
+            wrapper.between(Inventory::getInventoryDate, dateFrom, dateTo);
+        } else if (hasList) {
+            wrapper.in(Inventory::getInventoryDate, dates);
+        }
+        wrapper.orderByAsc(Inventory::getInventoryDate)
+               .orderByAsc(Inventory::getId);
+        // 上限保护：单次批量操作不能无限制（前端默认 365 天一般不会超，但兜底）
+        return inventoryMapper.selectList(wrapper);
     }
 
     /* ====================== 私有方法 ====================== */

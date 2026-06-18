@@ -161,6 +161,37 @@
             </div>
 
             <div class="form-item">
+              <label class="form-label">票种标签</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input
+                  class="form-input"
+                  v-model="tagInput"
+                  placeholder="输入标签后回车添加，如：热销"
+                  style="flex:1;"
+                  @keydown.enter.prevent="addTag"
+                />
+                <button type="button" class="btn btn-default" @click="addTag">添加</button>
+              </div>
+              <div v-if="form.tags.length" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+                <span v-for="(t, idx) in form.tags" :key="t + idx" class="tag tag-blue" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;">
+                  {{ t }}
+                  <button type="button" @click="removeTag(idx)" style="background:transparent;border:0;color:inherit;cursor:pointer;padding:0;line-height:1;font-size:12px;" title="删除">×</button>
+                </span>
+              </div>
+              <div v-else style="font-size:12px;color:var(--color-text-muted);margin-top:6px;">尚未添加标签</div>
+              <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                <span style="font-size:12px;color:var(--color-text-muted);">建议标签：</span>
+                <span
+                  v-for="s in suggestedTags"
+                  :key="s"
+                  class="tag tag-gray"
+                  style="cursor:pointer;"
+                  @click="addSuggestedTag(s)"
+                >+ {{ s }}</span>
+              </div>
+            </div>
+
+            <div class="form-item">
               <label class="form-label">票种说明</label>
               <textarea class="form-textarea" v-model="form.description" placeholder="说明票种内容、适用人群、特殊规则..."></textarea>
             </div>
@@ -198,6 +229,8 @@ const filterStatus = ref('')
 
 const showModal = ref(false)
 const editingTicket = ref(null)
+const tagInput = ref('')
+const suggestedTags = ['热销', '推荐', '限时', '新品', '优惠', '特惠', '节假日', '周末']
 const form = reactive({
   scenicId: '',
   name: '',
@@ -250,6 +283,35 @@ function resetForm() {
     price: 0, costPrice: 0, validDays: 1, refundable: true,
     description: '', status: '在售', tags: [],
   })
+  tagInput.value = ''
+}
+
+function addTag() {
+  const v = (tagInput.value || '').trim()
+  if (!v) return
+  if (form.tags.includes(v)) {
+    ElMessage({ type: 'warning', message: '该标签已存在' })
+    return
+  }
+  if (form.tags.length >= 10) {
+    ElMessage({ type: 'warning', message: '最多添加 10 个标签' })
+    return
+  }
+  form.tags.push(v)
+  tagInput.value = ''
+}
+
+function addSuggestedTag(s) {
+  if (form.tags.includes(s)) return
+  if (form.tags.length >= 10) {
+    ElMessage({ type: 'warning', message: '最多添加 10 个标签' })
+    return
+  }
+  form.tags.push(s)
+}
+
+function removeTag(idx) {
+  form.tags.splice(idx, 1)
 }
 
 function openCreate() {

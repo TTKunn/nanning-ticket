@@ -64,3 +64,17 @@ logging:
     com.ainanning.ticketing.mapper: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# 鉴权 / JWT 配置
+auth:
+  jwt:
+    # HS256 密钥，至少 32 字节；生产环境务必从环境变量注入
+    secret: ${AUTH_JWT_SECRET:nanning-ticket-demo-secret-key-please-change-me-32bytes-min}
+    # 令牌有效期（小时）
+    expireHours: 8
+    issuer: nanning-ticket
+  login:
+    # 连续失败次数达到该值时锁定账号
+    maxFailCount: 5
+    # 账号锁定时长（分钟）
+    lockMinutes: 15

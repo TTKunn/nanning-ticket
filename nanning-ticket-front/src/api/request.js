@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage } from '../components/ui/Message'
 import { showLoading, hideLoading } from '../components/ui/Loading'
+import { userStore } from '../store/user'
 
 /**
  * 统一请求封装
@@ -23,17 +24,21 @@ function removePending() {
 
 const service = axios.create({
   baseURL: '/api',
-  timeout: 15000,
+  // 默认 30s：原 15s 在 Vite 代理 + 偶发 GC 时容易被误判为超时
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json;charset=UTF-8',
   },
 })
 
-// 请求拦截器：附加 token（预留）
+// 请求拦截器：附加 token
 service.interceptors.request.use(
   (config) => {
     if (!config.silence) addPending()
-    const token = localStorage.getItem('token')
+    // 优先从 userStore 读取（登录后已写入内存；刷新页面时 store 初始化会从
+    // localStorage.auth.session 恢复）。注意：不能用 localStorage.getItem('token')，
+    // 因为 userStore 持久化时把整个会话存到了 'auth.session' 这个 JSON 里。
+    const token = userStore.token
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`
     }
@@ -58,6 +63,17 @@ service.interceptors.response.use(
         return res.data
       }
       // 业务异常：弹窗并 reject
+      // 32xx 系列（凭证相关）→ 强制跳登录
+      if (res.code === 3205 || res.code === 3206 || res.code === 3207) {
+        ElMessage({ type: 'warning', message: res.message || '登录已过期' })
+        userStore.clear()
+        // 跳登录页（hash 路由）
+        if (location.hash !== '#/login') {
+          location.hash = '#/login'
+        }
+        return Promise.reject(new Error(res.message || `Error code ${res.code}`))
+      }
+      // 3201/3202/3203 登录失败类不在拦截器统一处理（由登录页自定义提示）
       ElMessage({
         type: 'error',
         message: res.message || `请求失败（${res.code}）`,
@@ -70,9 +86,10 @@ service.interceptors.response.use(
   (error) => {
     if (error.config && !error.config.silence) removePending()
     let msg = '网络请求失败，请稍后重试'
+    let needLogin = false
     if (error.response) {
       const { status, data } = error.response
-      if (status === 401) msg = '登录已过期，请重新登录'
+      if (status === 401) { msg = '登录已过期，请重新登录'; needLogin = true }
       else if (status === 403) msg = '没有访问权限'
       else if (status === 404) msg = '请求的资源不存在'
       else if (status >= 500) msg = '服务器异常，请稍后再试'
@@ -81,6 +98,12 @@ service.interceptors.response.use(
       msg = '请求超时，请检查网络'
     } else if (error.message && error.message.includes('Network')) {
       msg = '无法连接到服务器，请确认后端已启动'
+    }
+    if (needLogin) {
+      userStore.clear()
+      if (location.hash !== '#/login') {
+        location.hash = '#/login'
+      }
     }
     ElMessage({ type: 'error', message: msg })
     return Promise.reject(error)

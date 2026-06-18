@@ -1,4 +1,6 @@
 // API 统一入口
+export * as authApi from './auth'
+export * as accountApi from './account'
 export * as scenicApi from './scenic'
 export * as ruleApi from './rule'
 export * as ticketApi from './ticket'

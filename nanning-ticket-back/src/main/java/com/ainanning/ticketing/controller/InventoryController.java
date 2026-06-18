@@ -2,16 +2,20 @@ package com.ainanning.ticketing.controller;
 
 import com.ainanning.ticketing.common.result.Result;
 import com.ainanning.ticketing.common.vo.PageVO;
+import com.ainanning.ticketing.dto.InventoryBatchDeleteDTO;
 import com.ainanning.ticketing.dto.InventoryBatchDTO;
+import com.ainanning.ticketing.dto.InventoryBatchUpdateDTO;
 import com.ainanning.ticketing.dto.InventoryQueryDTO;
 import com.ainanning.ticketing.dto.InventorySaveDTO;
 import com.ainanning.ticketing.service.InventoryService;
+import com.ainanning.ticketing.vo.BatchOpResultVO;
 import com.ainanning.ticketing.vo.InventoryVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,15 +28,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
+import java.util.List;
+
 /**
  * 库存 Controller
  *
  * <p>路由前缀：/api/inventories
- * <br>按"票种 × 日期"粒度管理每日库存，支持单日创建与日期范围批量创建。</p>
+ * <br>按"票种 × 日期"粒度管理每日库存，支持：
+ * <ul>
+ *   <li>单日 CRUD</li>
+ *   <li>按日期范围批量创建（POST /batch）</li>
+ *   <li>按范围/列表批量更新（PUT /batch）</li>
+ *   <li>按范围/列表批量删除（DELETE /batch）</li>
+ * </ul>
+ * </p>
  *
  * @author nanning-ticket
  */
-@Tag(name = "04. 库存管理", description = "按票种与日期维度的库存 CRUD，含批量按区间创建")
+@Tag(name = "04. 库存管理", description = "按票种与日期维度的库存 CRUD，含批量按区间创建/更新/删除")
 @Validated
 @RestController
 @RequestMapping("/api/inventories")
@@ -54,6 +68,14 @@ public class InventoryController {
         return Result.success(inventoryService.getById(id));
     }
 
+    @Operation(summary = "查询指定票种已存在库存的日期列表（按日期升序）",
+               description = "用于批量创建弹窗：选定票种后展示已占用日期，避免重复创建")
+    @GetMapping("/dates")
+    public Result<List<LocalDate>> listExistingDates(
+            @Parameter(description = "票种 ID", required = true) @RequestParam Long ticketId) {
+        return Result.success(inventoryService.listExistingDates(ticketId));
+    }
+
     @Operation(summary = "新建单日库存")
     @PostMapping
     public Result<Long> create(@Valid @RequestBody InventorySaveDTO dto) {
@@ -66,6 +88,18 @@ public class InventoryController {
     public Result<Integer> createBatch(@Valid @RequestBody InventoryBatchDTO dto) {
         int count = inventoryService.createBatch(dto);
         return Result.success("批量创建完成", count);
+    }
+
+    @Operation(summary = "按范围/列表批量更新库存（调整 total / status / remark）")
+    @PutMapping("/batch")
+    public Result<BatchOpResultVO> updateBatch(@Valid @RequestBody InventoryBatchUpdateDTO dto) {
+        return Result.success("批量操作完成", inventoryService.updateBatch(dto));
+    }
+
+    @Operation(summary = "按范围/列表批量删除库存（默认仅删未售记录）")
+    @DeleteMapping("/batch")
+    public Result<BatchOpResultVO> deleteBatch(@Valid @RequestBody InventoryBatchDeleteDTO dto) {
+        return Result.success("批量操作完成", inventoryService.deleteBatch(dto));
     }
 
     @Operation(summary = "更新库存（总库存 / 状态 / 备注）")

@@ -84,7 +84,7 @@
     <div class="modal-mask" v-if="showScanModal" @click.self="showScanModal = false">
       <div class="modal-box" style="width:460px;">
         <div class="modal-header">
-          <span class="modal-title">扫码/手工检票</span>
+          <span class="modal-title">检票</span>
           <button class="modal-close" @click="showScanModal = false">×</button>
         </div>
         <div class="modal-body">
@@ -100,7 +100,8 @@
               <label class="form-label">检票方式</label>
               <select class="form-select" v-model="form.verifyMethod">
                 <option value="扫码">扫码</option>
-                <option value="手工">手工</option>
+                <option value="手输">手输（手工输入票据码）</option>
+                <option value="刷脸">刷脸</option>
               </select>
             </div>
             <div class="form-item">

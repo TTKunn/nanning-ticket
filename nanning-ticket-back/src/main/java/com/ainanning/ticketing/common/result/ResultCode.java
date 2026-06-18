@@ -67,6 +67,8 @@ public enum ResultCode {
     INVENTORY_BATCH_FAILED(2308, "批量创建库存失败"),
     INVENTORY_SAVE_FAILED(2309, "保存库存失败"),
     INVENTORY_DELETE_FAILED(2310, "删除库存失败"),
+    INVENTORY_BATCH_OP_INVALID(2311, "批量操作类型不合法"),
+    INVENTORY_BATCH_TARGET_EMPTY(2312, "批量操作未命中任何库存记录"),
 
     /* 窗口售票业务错误 24xx */
     SALE_NOT_FOUND(2401, "销售单不存在"),
@@ -195,7 +197,31 @@ public enum ResultCode {
     OP_LOG_STATUS_INVALID(3104, "操作日志状态不合法"),
     OP_LOG_PARAMS_TOO_LARGE(3105, "请求参数过大，不允许记录"),
     OP_LOG_RECORD_FAILED(3106, "记录操作日志失败"),
-    OP_LOG_RETENTION_DAYS_INVALID(3107, "保留天数不合法（必须 1-3650）");
+    OP_LOG_RETENTION_DAYS_INVALID(3107, "保留天数不合法（必须 1-3650）"),
+
+    /* 登录 / 账号业务错误 32xx */
+    LOGIN_FAILED(3201, "账号或密码错误"),
+    LOGIN_DISABLED(3202, "账号已被停用，请联系管理员"),
+    LOGIN_LOCKED(3203, "账号已被锁定，请稍后再试"),
+    LOGIN_CAPTCHA_INVALID(3204, "图形验证码不正确或已过期"),
+    LOGIN_TOKEN_EXPIRED(3205, "登录凭证已过期，请重新登录"),
+    LOGIN_TOKEN_INVALID(3206, "登录凭证无效，请重新登录"),
+    LOGIN_REQUIRED(3207, "请先登录"),
+
+    USER_NOT_FOUND(3210, "用户不存在"),
+    USER_USERNAME_DUPLICATE(3211, "登录账号已存在"),
+    USER_PHONE_DUPLICATE(3212, "手机号已被其他账号使用"),
+    USER_EMAIL_DUPLICATE(3213, "邮箱已被其他账号使用"),
+    USER_STATUS_INVALID(3214, "账号状态不合法"),
+    USER_PASSWORD_INVALID(3215, "原密码错误"),
+    USER_PASSWORD_SAME(3216, "新密码不能与原密码相同"),
+    USER_PASSWORD_WEAK(3217, "新密码长度不合法（6-64 位字母数字）"),
+    USER_SAVE_FAILED(3218, "保存用户失败"),
+    USER_DELETE_FAILED(3219, "删除用户失败"),
+    USER_CANNOT_DELETE_SELF(3220, "不能删除自己的账号"),
+    USER_CANNOT_DISABLE_SELF(3221, "不能停用自己的账号"),
+    USER_NOT_ALLOWED(3222, "当前账号无权访问该资源"),
+    USER_OLD_PASSWORD_REQUIRED(3223, "修改密码时必须填写原密码");
 
     private final Integer code;
     private final String message;
